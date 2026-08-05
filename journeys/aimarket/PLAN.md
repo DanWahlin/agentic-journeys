@@ -1,0 +1,676 @@
+# AIMarket: AI-Powered Marketplace — Spec
+
+AIMarket is a marketplace API and React storefront with semantic search and an AI shopping assistant. GitHub Copilot uses this document as the implementation spec.
+
+README prompts use the exact section names in this document as stable references. If a section is renamed, update its README references in the same change.
+
+**Out of scope:** No auth, no payments, no image upload, no email, no admin dashboard, no rate limiting, no WebSockets.
+
+---
+
+## Choose Your Stack
+
+Pick your API language. Data models, endpoints, and acceptance criteria are identical across stacks.
+
+**Happy path (recommended for first run):** Node.js + TypeScript + Express, region `westus`, model `gpt-5-mini` (fallback `gpt-5.4-mini`). Complete the work from `journeys/aimarket` inside the workspace created at the beginning of the journey.
+
+| | Node.js | Python | .NET | Java |
+|---|---------|--------|------|------|
+| **Framework** | Express + TypeScript | FastAPI | ASP.NET Core Minimal APIs | Spring Boot |
+| **SQLite** | `better-sqlite3` | `sqlite3` (stdlib) | `Microsoft.Data.Sqlite` | `JdbcTemplate` + SQLite |
+
+The frontend is always React 18 + Tailwind CSS. AI uses **gpt-5-mini on Microsoft Foundry** (with gpt-5.4-mini as the fallback if gpt-5-mini is unavailable in your region). Deploy with **azd** + **Bicep**, preferring Azure Verified Modules (AVM) with raw `Microsoft.*` resources when AVM blocks deployment. See the [`data-access-abstraction` skill](../../.github/skills/data-access-abstraction/SKILL.md) for repository pattern examples in all four languages.
+
+## Project Structure
+
+```
+aimarket/
+├── api/          # Your chosen language
+├── client/       # React frontend (Vite + Tailwind)
+├── infra/        # Bicep with AVM modules (Azure deployment)
+└── azure.yaml    # azd configuration (Azure deployment)
+```
+
+The API must follow the **repository pattern** (interfaces → implementations → factory) so routes stay independent of the data layer. SQLite is the default implementation. A Cosmos DB or PostgreSQL deployment also requires its repository implementation, database infrastructure, credentials, and `DATA_PROVIDER` configuration.
+
+---
+
+## API
+
+Build the API with a local SQLite database. No Azure services needed yet.
+
+### Data Access Layer
+
+Define these repository contracts as interfaces or protocols in your chosen language:
+
+```
+ProductRepository:
+  getAll(page, pageSize, category?, minPrice?, maxPrice?, status?) → { data: Product[], totalCount }
+  getById(id) → Product | null
+  create(input) → Product
+  update(id, fields) → Product | null
+  search(query, filters?) → Product[]
+
+OrderRepository:
+  create(userId, items, shippingAddress) → Order
+  getById(id) → Order | null
+  getByUserId(userId, page, pageSize) → { data: Order[], totalCount }
+
+UserRepository:
+  create(email, name, role) → User
+  getById(id) → User | null
+  getByEmail(email) → User | null
+```
+
+The factory reads the `DATA_PROVIDER` environment variable (default: `sqlite`) and returns the matching implementation. Routes never import database clients directly.
+
+**SQLite notes:** Store arrays and objects as JSON strings, then parse them on read. Use an `order_items` junction table for order line items. Set `journal_mode=WAL` and `foreign_keys=ON`. Store the database at `api/aimarket.db` and add it to `.gitignore`.
+
+**API entry point:** Listen on `0.0.0.0:3000` by default and honor the `PORT` environment variable when it is set. Binding to all interfaces keeps the API reachable both at `localhost:3000` during development and through Container Apps ingress after deployment. Enable CORS, parse JSON, expose `GET /api/health` → `{status:"ok"}`, mount routes at `/api/{products,orders,users,chat}`, and register the global error handler last.
+
+### Data Models
+
+#### Product
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| id | string | auto | UUID v4, generated on create |
+| name | string | yes | 1–200 characters |
+| description | string | yes | 1–2000 characters |
+| shortDescription | string | yes | 1–200 characters |
+| price | number | yes | > 0, two decimal places |
+| category | string | yes | Must be one of: `Electronics`, `Clothing`, `Home`, `Sports`, `Books`, `Toys` |
+| tags | string[] | no | Defaults to `[]` |
+| inventory | number | yes | >= 0, integer |
+| rating | number | no | 0 means unrated; otherwise 1.0–5.0. Default `0` |
+| reviewCount | number | no | >= 0, default `0` |
+| imageUrl | string | no | Valid URL or empty string |
+| sellerId | string | yes | Must reference an existing user with role `seller` |
+| status | string | no | `draft`, `active`, or `archived`. Default `active` |
+| createdAt | string | auto | ISO 8601, set on create |
+| updatedAt | string | auto | ISO 8601, set on create and update |
+
+**Price validation:** Never validate two decimal places with `Math.round(value * 100) === value * 100` or another exact comparison against an unrounded IEEE-754 product. First require a finite positive number, then normalize to integer cents or compare against a value rounded back to two decimals. Regression tests must accept `64.99` and `0.1`, reject `64.991`, and reject `NaN`, positive infinity, and negative infinity.
+
+#### Order
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| id | string | auto | UUID v4 |
+| userId | string | yes | Must reference an existing user |
+| items | OrderItem[] | yes | At least 1 item. Each: `{ productId: string, quantity: number, priceAtPurchase: number }` |
+| total | number | auto | Sum of (quantity × priceAtPurchase) for all items. Calculated server-side. |
+| status | string | auto | `pending` on create. Valid transitions: pending → confirmed → shipped → delivered; pending → cancelled |
+| shippingAddress | object | yes | `{ street: string, city: string, state: string, zip: string, country: string }` — all fields required |
+| createdAt | string | auto | ISO 8601 |
+
+**Order creation behavior:** When an order is placed, the API must:
+1. Validate all `productId` references exist and have status `active`
+2. Validate each product has sufficient `inventory` for the requested `quantity`
+3. Decrement `inventory` for each product by the ordered `quantity`
+4. Set `priceAtPurchase` from the product's current `price` (not from the request)
+5. Calculate `total` server-side
+
+#### User
+
+| Field | Type | Required | Constraints |
+|-------|------|----------|-------------|
+| id | string | auto | UUID v4 |
+| email | string | yes | Valid email format, unique across all users |
+| name | string | yes | 1–100 characters |
+| role | string | yes | `buyer` or `seller` |
+| createdAt | string | auto | ISO 8601 |
+
+### API Endpoints
+
+Base URL: `http://localhost:3000/api`
+
+#### `GET /products`
+
+List products with pagination and optional filters.
+
+**Query parameters:**
+
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| page | number | 1 | Page number (1-based) |
+| pageSize | number | 20 | Items per page (max 100) |
+| category | string | — | Filter by exact category |
+| minPrice | number | — | Filter by minimum price |
+| maxPrice | number | — | Filter by maximum price |
+| status | string | `active` | Filter by status. Only return `active` products by default. |
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": "a1b2c3d4-...",
+      "name": "UltraBook Pro 15",
+      "shortDescription": "Lightweight 15-inch ultrabook with all-day battery",
+      "price": 1299.99,
+      "category": "Electronics",
+      "tags": ["laptop", "ultrabook", "portable"],
+      "inventory": 25,
+      "rating": 4.7,
+      "reviewCount": 142,
+      "imageUrl": "https://images.unsplash.com/photo-1589561084283-930aa7b1ce50?w=400&h=300&fit=crop",
+      "status": "active"
+    }
+  ],
+  "page": 1,
+  "pageSize": 20,
+  "totalCount": 10,
+  "totalPages": 1
+}
+```
+
+Note: List responses return a subset of fields (no `description`, `sellerId`, `createdAt`, `updatedAt`). Full details are returned by `GET /products/:id`.
+
+#### `GET /products/:id`
+
+**Response (200):** Full product object with all fields.
+
+**Response (404):**
+
+```json
+{
+  "error": { "code": "NOT_FOUND", "message": "Product not found" }
+}
+```
+
+#### `POST /products`
+
+**Request body:**
+
+```json
+{
+  "name": "Mechanical Keyboard",
+  "description": "Cherry MX Brown switches with RGB backlighting and USB-C connection.",
+  "shortDescription": "Mechanical keyboard with Cherry MX switches",
+  "price": 149.99,
+  "category": "Electronics",
+  "tags": ["keyboard", "mechanical", "rgb"],
+  "inventory": 50,
+  "imageUrl": "https://images.unsplash.com/photo-1589561084283-930aa7b1ce50?w=400&h=300&fit=crop",
+  "sellerId": "seller-user-id"
+}
+```
+
+**Response (201):** The created product with `id`, `createdAt`, `updatedAt`, and defaults applied.
+
+**Response (400):** Validation error with specific field failures.
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Validation failed",
+    "details": [
+      { "field": "price", "message": "Price must be greater than 0" },
+      { "field": "category", "message": "Category must be one of: Electronics, Clothing, Home, Sports, Books, Toys" }
+    ]
+  }
+}
+```
+
+#### `PUT /products/:id`
+
+Partial update. Only include fields to change. Returns the updated product (200) or 404.
+
+#### `POST /orders`
+
+**Request body:**
+
+```json
+{
+  "userId": "buyer-user-id",
+  "items": [
+    { "productId": "product-1-id", "quantity": 2 },
+    { "productId": "product-2-id", "quantity": 1 }
+  ],
+  "shippingAddress": {
+    "street": "123 Main St",
+    "city": "Seattle",
+    "state": "WA",
+    "zip": "98101",
+    "country": "US"
+  }
+}
+```
+
+**Response (201):**
+
+```json
+{
+  "id": "order-id",
+  "userId": "buyer-user-id",
+  "items": [
+    { "productId": "product-1-id", "quantity": 2, "priceAtPurchase": 1299.99 },
+    { "productId": "product-2-id", "quantity": 1, "priceAtPurchase": 249.99 }
+  ],
+  "total": 2849.97,
+  "status": "pending",
+  "shippingAddress": { "street": "123 Main St", "city": "Seattle", "state": "WA", "zip": "98101", "country": "US" },
+  "createdAt": "2026-04-02T10:30:00.000Z"
+}
+```
+
+**Error cases:**
+- 400 if `items` is empty
+- 400 if any `productId` doesn't exist or isn't `active`
+- 400 if any product has insufficient `inventory`
+- 400 if `shippingAddress` is missing required fields
+
+#### `GET /orders/:id`
+
+Full order object (200) or 404.
+
+#### `GET /orders?userId=xxx`
+
+Paginated list of orders for a user. Same pagination format as products.
+
+#### `POST /users/register`
+
+**Request body:**
+
+```json
+{
+  "email": "alex@example.com",
+  "name": "Alex Johnson",
+  "role": "buyer"
+}
+```
+
+**Response (201):** The created user with `id` and `createdAt`.
+
+**Response (400):** If email already exists: `{ "error": { "code": "DUPLICATE_EMAIL", "message": "A user with this email already exists" } }`
+
+#### `GET /users/:id`
+
+Full user object (200) or 404.
+
+### Error Format
+
+All errors: `{ "error": { "code": "ERROR_CODE", "message": "...", "details": [] } }`. `details` only on validation errors.
+
+| Status | Code | When |
+|--------|------|------|
+| 400 | `VALIDATION_ERROR` | Missing or invalid fields |
+| 400 | `DUPLICATE_EMAIL` | Email already registered |
+| 400 | `INSUFFICIENT_INVENTORY` | Not enough stock |
+| 404 | `NOT_FOUND` | Resource doesn't exist |
+| 502 | `AI_RESPONSE_ERROR` | Foundry returned no usable assistant content |
+| 500 | `INTERNAL_ERROR` | Unexpected error |
+
+### Seed Data
+
+Loaded into the SQLite database on startup. Persists locally in the `aimarket.db` file.
+
+**Users:**
+
+| id | email | name | role |
+|----|-------|------|------|
+| `user-buyer-1` | `alex@example.com` | Alex Johnson | buyer |
+| `user-seller-1` | `jordan@example.com` | Jordan Lee | seller |
+
+**Products** (all `sellerId: "user-seller-1"`, all `status: "active"`):
+
+| id | name | category | price | inventory | rating | tags |
+|----|------|----------|-------|-----------|--------|------|
+| `prod-1` | UltraBook Pro 15 | Electronics | 1299.99 | 25 | 4.7 | laptop, ultrabook, portable |
+| `prod-2` | Wireless Noise-Canceling Headphones | Electronics | 249.99 | 100 | 4.5 | headphones, wireless, noise-canceling |
+| `prod-3` | Trail Runner X200 | Sports | 129.99 | 60 | 4.3 | running, shoes, trail |
+| `prod-4` | Organic Cotton Crew Neck | Clothing | 34.99 | 200 | 4.1 | t-shirt, organic, cotton |
+| `prod-5` | Smart Home Hub | Electronics | 89.99 | 75 | 4.4 | smart-home, hub, voice-control |
+| `prod-6` | Ceramic Pour-Over Set | Home | 45.99 | 40 | 4.8 | coffee, pour-over, ceramic |
+| `prod-7` | Pro Django | Books | 39.99 | 150 | 4.6 | programming, python, django |
+| `prod-8` | Yoga Mat Premium | Sports | 59.99 | 80 | 4.2 | yoga, mat, exercise |
+| `prod-9` | Winter Puffer Jacket | Clothing | 189.99 | 35 | 4.5 | jacket, winter, puffer |
+| `prod-10` | Building Block Castle Set | Toys | 49.99 | 90 | 4.9 | building, blocks, kids |
+
+**Product descriptions:**
+
+| id | description | shortDescription |
+|----|-------------|------------------|
+| `prod-1` | The UltraBook Pro 15 is a lightweight 15-inch laptop computer built for professionals on the move. Featuring a full-day battery, a vivid IPS display, and a backlit keyboard, this portable computer handles everything from code to presentations without breaking a sweat. | Lightweight 15-inch ultrabook with all-day battery |
+| `prod-2` | Block out distractions with industry-leading active noise cancellation. These wireless headphones deliver rich, balanced sound over Bluetooth 5.2 with 30 hours of battery life. Foldable design fits easily in a backpack. | Wireless over-ear headphones with active noise cancellation |
+| `prod-3` | Designed for rugged terrain, the Trail Runner X200 features aggressive lugs for grip, a rock plate for protection, and a breathable mesh upper. Ideal for trail runs, hiking, and obstacle courses. | Rugged trail running shoes with aggressive grip |
+| `prod-4` | Made from 100% GOTS-certified organic cotton, this crew neck tee is soft, breathable, and built to last. Pre-shrunk fabric and reinforced stitching mean it holds its shape wash after wash. | Soft organic cotton t-shirt, pre-shrunk and durable |
+| `prod-5` | Control your lights, thermostat, and locks with voice commands or the companion app. The Smart Home Hub supports Zigbee, Z-Wave, and Wi-Fi devices and works with Alexa and Google Assistant out of the box. | Voice-controlled smart home hub with multi-protocol support |
+| `prod-6` | Hand-thrown ceramic dripper and server set for pour-over coffee enthusiasts. The ribbed interior promotes even extraction while the double-wall server keeps your brew warm. Dishwasher safe. | Handcrafted ceramic pour-over coffee dripper and server |
+| `prod-7` | Master Django from models to deployment. Covers the ORM, class-based views, REST APIs with Django REST Framework, authentication, testing, and production deployment with Docker and CI/CD pipelines. | Complete Django guide from models to production deployment |
+| `prod-8` | Extra-thick 6mm natural rubber mat with a non-slip textured surface on both sides. Alignment lines help with pose positioning. Includes a carrying strap. Free from PVC, latex, and heavy metals. | Extra-thick 6mm natural rubber yoga mat with alignment lines |
+| `prod-9` | Stay warm in sub-zero temperatures with this 700-fill-power down puffer jacket. Water-resistant shell, elastic cuffs, and a detachable hood keep the cold out. Packs into its own pocket for travel. | 700-fill down puffer jacket, water-resistant and packable |
+| `prod-10` | Build a medieval castle with 850 interlocking pieces including turrets, a drawbridge, and 6 knight minifigures. Compatible with all major building block brands. Recommended for ages 6 and up. | 850-piece castle building set with 6 knight minifigures |
+
+Use Unsplash image URLs for `imageUrl`. Format: `https://images.unsplash.com/photo-{id}?w=400&h=300&fit=crop`. For `prod-10`, use the validated building-block photo ID `photo-1587654780291-39c9404d746b`; the previously generated `photo-1558877385-8c1b8e6c0b8f` returns an error. Choose matching photos for the remaining products. Before accepting seed data, request every image URL and require HTTP 2xx. Replace any URL that redirects to an error or returns 4xx/5xx. The generated API verifier or browser test must fail if any product image is broken.
+
+**Orders:**
+
+| id | userId | items | total | status |
+|----|--------|-------|-------|--------|
+| `order-1` | `user-buyer-1` | prod-1 × 1 ($1299.99), prod-6 × 2 ($45.99 each) | 1391.97 | confirmed |
+| `order-2` | `user-buyer-1` | prod-4 × 3 ($34.99 each) | 104.97 | pending |
+
+**Note:** Seed orders are pre-loaded historical data. They do **not** decrement product inventory. Inventory values in the products table represent current stock.
+
+---
+
+## Frontend
+
+Build the React storefront. The API must be running for the frontend to work.
+
+### Pages
+
+#### Product Grid (Home Page — `/`)
+
+- Displays all active products in a responsive card grid (3 columns on desktop, 2 on tablet, 1 on mobile)
+- Each card shows: image, name, short description, price, rating (stars), and category badge
+- Search bar at the top of the page (plain text search that filters by name and tags client-side)
+- Category filter buttons below the search bar (All, Electronics, Clothing, Home, Sports, Books, Toys)
+- Clicking a product card navigates to the product detail page
+
+#### Product Detail (`/products/:id`)
+
+- Full product view: large image, name, full description, price, rating, review count, category, tags, inventory status
+- "Add to Cart" button with quantity selector (1-10, default 1)
+- If inventory is 0, show "Out of Stock" and disable the button
+- "Back to Products" link
+
+#### Cart (`/cart`)
+
+- List of cart items with: product name, image (small), unit price, quantity (editable), line total
+- "Remove" button per item
+- Cart summary: subtotal, item count
+- "Place Order" button that calls `POST /api/orders` with a hardcoded `userId` of `user-buyer-1` and a hardcoded shipping address
+- After successful order, show a confirmation message with the order ID and clear the cart
+- Empty cart state: "Your cart is empty" with a link to browse products
+
+### Components
+
+#### SearchBar: Client-Side Filtering
+
+- Text input with placeholder "Search products..."
+- Filters the product grid as the user types (debounced, 300ms)
+
+#### SearchBar: AI Search Integration
+
+- Add a toggle for "AI Search" that uses the semantic search endpoint instead of client-side filtering
+
+#### ChatWidget: Shared Layout
+
+- Floating button in the bottom-right corner (collapsed by default)
+- Click to expand a chat panel (400px wide, 500px tall)
+
+#### ChatWidget: Placeholder State
+
+- Show a placeholder message: "Shopping assistant coming soon!"
+- Do not wire up the API
+
+#### ChatWidget: AI Integration
+
+- Wire up to `POST /api/chat`
+- Message list showing conversation history (user messages right-aligned, assistant messages left-aligned)
+- Text input at the bottom with a send button
+- Sends full message history to `POST /api/chat` on each message
+- Shows a typing indicator while waiting for a response
+- Initial assistant message on open: "Hi! I'm the AIMarket assistant. I can help you find products, compare options, or answer questions about our catalog. What are you looking for?"
+
+#### CartIcon
+
+- Shopping cart icon in the top-right navigation
+- Badge showing total item count
+- Clicking navigates to `/cart`
+
+### State Management
+
+- Cart state stored in React context (not persisted to a backend)
+- Cart structure: `Map<productId, { product: Product, quantity: number }>`
+- Cart survives page navigation but resets on browser refresh
+
+### API Client
+
+All API calls go through a single `api.ts` module:
+
+```typescript
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
+export async function getProducts(params?: { category?: string; page?: number }): Promise<PaginatedResponse<Product>>
+export async function getProduct(id: string): Promise<Product>
+export async function searchProducts(query: string): Promise<Product[]>
+export async function placeOrder(order: CreateOrderRequest): Promise<Order>
+export async function sendChatMessage(messages: ChatMessage[]): Promise<string>
+```
+
+**URL convention:** Endpoint paths in the client (e.g., `/products`, `/orders`) do NOT include the `/api` prefix — that's part of `API_BASE`. In development, the Vite proxy maps `/api` → `localhost:3000/api`. In production, set `VITE_API_URL` to the full API base including `/api` (e.g., `https://ca-api-xxx.azurecontainerapps.io/api`).
+
+---
+
+## AI Features
+
+Add semantic search and a shopping assistant.
+
+**Local development and deployment:** Implement endpoints with graceful fallbacks (SQLite LIKE for search; chat returns 503 without a Foundry endpoint) so the AI features work without long-lived standalone AI resources. The **Azure Deployment** section provisions Azure AI Search + Microsoft Foundry, injects the Search key, and configures managed-identity authentication for Foundry. You can use temporary local credentials to test AI before deployment, but don't create a second permanent Search/Foundry pair when the Azure deployment will provision them.
+
+### Semantic Product Search
+
+Replace keyword filtering with semantic search that understands intent.
+
+#### Azure AI Search Index
+
+**Index name:** `aimarket-products`
+
+**Fields:**
+
+| Field | Type | Searchable | Filterable | Sortable | Facetable |
+|-------|------|-----------|-----------|---------|----------|
+| id | string (key) | no | yes | no | no |
+| name | string | yes | no | yes | no |
+| description | string | yes | no | no | no |
+| category | string | yes | yes | no | yes |
+| tags | string collection | yes | yes | no | yes |
+| price | double | no | yes | yes | no |
+| rating | double | no | yes | yes | no |
+
+**Semantic configuration:**
+- Semantic configuration name: `aimarket-semantic`
+- Title field: `name`
+- Content fields: `description`
+- Keyword fields: `tags`
+
+#### Endpoint: `POST /api/products/search`
+
+**Request body:**
+
+```json
+{
+  "query": "something lightweight for travel",
+  "category": "Electronics",
+  "minPrice": 100,
+  "maxPrice": 1500
+}
+```
+
+Only `query` is required. `category`, `minPrice`, and `maxPrice` are optional filters applied alongside semantic ranking.
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": "prod-1",
+      "name": "UltraBook Pro 15",
+      "shortDescription": "Lightweight 15-inch ultrabook with all-day battery",
+      "price": 1299.99,
+      "category": "Electronics",
+      "rating": 4.7,
+      "imageUrl": "https://images.unsplash.com/photo-1589561084283-930aa7b1ce50?w=400&h=300&fit=crop",
+      "score": 0.92
+    }
+  ],
+  "query": "something lightweight for travel",
+  "count": 3
+}
+```
+
+**Behavior:**
+- Uses Azure AI Search with semantic ranking (query type: `semantic`)
+- Falls back to simple text search if Azure AI Search is unavailable
+- Returns top 10 results ranked by semantic relevance
+- Each result includes an API-normalized `score` from 0 to 1. Normalize the semantic reranker score from its 0–4 range, or squash the unbounded BM25 score into the same 0–1 contract before returning it.
+- **Two-step process:** Search returns IDs and scores from the index, then the API fetches full product details (including `shortDescription`, `imageUrl`) from the database and merges them into the response
+
+#### Indexing
+
+- On API startup, push all seed products to the Azure AI Search index
+- Provide a script or endpoint (`POST /api/products/reindex`) to re-push all products
+
+#### Frontend Integration
+
+- Add an "AI Search" toggle to the SearchBar component
+- When enabled, search calls `POST /api/products/search` instead of client-side filtering
+- Show a small label on results: "AI-powered results" when semantic search is active
+
+#### Semantic Search Environment Variables
+
+`AZURE_SEARCH_ENDPOINT`, `AZURE_SEARCH_KEY`, and `AZURE_SEARCH_INDEX` (default: `aimarket-products`).
+
+There is deliberately no api-version variable. The chat client calls the versionless `/openai/v1` API, so do not add `AZURE_OPENAI_API_VERSION` here or to the Container App environment.
+
+When Azure AI Search variables are not set, search falls back to SQLite LIKE queries.
+
+### Shopping Assistant
+
+A conversational agent that helps users find products.
+
+#### Endpoint: `POST /api/chat`
+
+**Request body:**
+
+```json
+{
+  "messages": [
+    { "role": "user", "content": "What laptops do you have?" }
+  ]
+}
+```
+
+**Response (200):**
+
+```json
+{
+  "role": "assistant",
+  "content": "We have the UltraBook Pro 15, a lightweight 15-inch ultrabook at $1,299.99 with a 4.7 rating. It's great for travel and has all-day battery life. Would you like more details, or are you looking for something in a different price range?"
+}
+```
+
+#### System Prompt
+
+```
+You are the AIMarket shopping assistant. You help customers find and compare 
+products from the AIMarket catalog.
+
+Rules:
+- Only recommend products that exist in the catalog provided below.
+- Include the product name, price, and rating when recommending products.
+- If a customer asks about a product category you don't have, say so honestly.
+- Keep responses concise (2-3 sentences for simple questions, up to a paragraph for comparisons).
+- Do not make up products, prices, or features that aren't in the catalog.
+- You cannot process orders, handle returns, or take payments. If asked, explain 
+  that the customer can add items to their cart on the website.
+
+Current catalog:
+{products_json}
+```
+
+**Behavior:**
+- On each request, fetch all active products and inject them into the system prompt as JSON
+- Use Microsoft Foundry chat completions API with `gpt-5-mini` (fallback to `gpt-5.4-mini` if unavailable in your region)
+- Call the versionless `/openai/v1` API. Use the OpenAI client with a base URL of `<AZURE_OPENAI_ENDPOINT>/openai/v1/` (tolerate a trailing slash on the endpoint) and send the deployment name as `model`. Do **not** use a dated `api-version` and do **not** use an Azure-specific client that requires one: the dated GA version (`2024-10-21`) rejects `reasoning_effort`, and the v1 API has been GA since August 2025.
+- Temperature: leave at the model default — both supported models are in the gpt-5 family and reject custom temperature values.
+- Reasoning effort: `minimal` — product lookup and comparison are latency-sensitive assistant tasks that do not need deep reasoning.
+- If a deployment rejects `reasoning_effort` anyway (`gpt-5-chat` variants are not reasoning models), retry the request once without the parameter rather than failing the conversation.
+- Max completion/output tokens: at least `2000`. This limit includes hidden reasoning tokens for GPT-5 models; a 500-token limit can be exhausted before the model emits visible content.
+- Pass the full message history from the request (the client maintains conversation state)
+- Treat an empty or whitespace-only model response as an upstream failure. Return HTTP 502 with code `AI_RESPONSE_ERROR` and a user-safe message instead of exposing it as a generic 500.
+
+#### Shopping Assistant Environment Variables
+
+`AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_DEPLOYMENT` (default: `gpt-5-mini`), and optional `AZURE_OPENAI_KEY` for local testing.
+
+When `AZURE_OPENAI_ENDPOINT` is not set, `/api/chat` returns 503. In Azure, authenticate to Foundry with the API Container App's managed identity and the `Cognitive Services User` role. For optional local testing, use `AZURE_OPENAI_KEY` as a fallback.
+
+---
+
+## Azure Deployment
+
+Deploy the full stack to Azure Container Apps using Bicep with AVM modules and azd.
+
+> **📖 Read the [`container-apps-deployment` skill](../../.github/skills/container-apps-deployment/SKILL.md) before generating infrastructure.** It covers critical gotchas with ACR authentication, zone redundancy, azure.yaml configuration, and SPA frontend deployment that apply to this deployment.
+
+### Azure Skills Plugin
+
+The Azure Skills plugin for GitHub Copilot provides MCP tools and plugin skills for infrastructure generation and deployment. Install it with `/plugin install azure@azure-skills` (Copilot CLI) or the equivalent plugin install flow in your surface if not already installed.
+
+| Tool / Skill | When to Use |
+|------|-------------|
+| `azure_bicep_schema` | Look up AVM module properties, required fields, and latest API versions |
+| `azure_deploy_iac_guidance` | Get best practices for azd project structure and Container Apps configuration |
+| `azure_deploy_plan` | Before `azd up` — validate deployment plan and check for misconfigurations |
+| `azure_deploy_app_logs` | Post-deployment — fetch Log Analytics logs to troubleshoot startup errors |
+| `azure-prepare` (skill) | Generate Bicep infrastructure, azure.yaml, and deployment configuration |
+| `azure-validate` (skill) | Validate generated infrastructure before deployment |
+| `azure-deploy` (skill) | Execute the deployment with azd |
+
+### Containerization
+
+- **API Dockerfile:** Multi-stage build for your language. Builder stage compiles, final stage runs production artifacts only. Include the native build toolchain in the builder stage when a dependency compiles native modules (for example, SQLite drivers). Include `.dockerignore` to exclude dependency directories and db files while keeping build configuration files the container build needs (for example, `tsconfig.json`).
+- **Client Dockerfile:** Multi-stage `node:24-alpine` → `nginx:alpine`. Azure Container Registry builds the image as `linux/amd64`, so the Dockerfile must not require host-specific Buildx variables. Accept `VITE_API_URL` before `npm run build`. Serve with `nginx.conf` using `try_files` for SPA routing. **No `/api/` proxy block** — the frontend calls the API directly via `VITE_API_URL`.
+- **`.dockerignore`:** Both directories must exclude dependency dirs, build output, `.env`, and Git metadata (`.git/`).
+
+### Azure Resources
+
+Prefer **Azure Verified Modules (AVM)** from `br/public:avm/...` for all resources. If an AVM module blocks deployment (parameter drift, unsupported passthrough, or schema mismatch), switch that single resource to a raw `Microsoft.*` Bicep resource and document why. For a resource that requires a key, such as Azure AI Search, use a deterministic `existing` resource reference with `dependsOn` on the AVM module before calling `listAdminKeys()`.
+
+| Resource | Module / Approach | Purpose |
+|----------|------------------|---------|
+| Monitoring | `br/public:avm/ptn/azd/monitoring` | Log Analytics + Application Insights |
+| Container Registry | `br/public:avm/res/container-registry/registry`; use Azure CLI authentication for pushes and managed identity for pulls | Docker images |
+| Azure AI Search | `br/public:avm/res/search/search-service` (Basic SKU — required for semantic ranking) + `existing` ref for `listAdminKeys()` | Semantic product search |
+| Container Apps Env | `br/public:avm/res/app/managed-environment` | Hosts API + frontend |
+| Container Apps (×2) | `br/public:avm/res/app/container-app` | API + web |
+| Microsoft Foundry | `br/public:avm/ptn/ai-ml/ai-foundry` (`baseName` max 12 chars, `aiModelDeployments` array for the selected model, `aiFoundryConfiguration.disableLocalAuth: false`) | gpt-5-mini model hosting (fallback: gpt-5.4-mini). Outputs: `aiServicesName`, `aiProjectName`. The API authenticates with managed identity. |
+
+**Pattern for wiring secrets:** At subscription scope, `existing` resource references cannot use `dependsOn`, so `listAdminKeys()` calls can fail before a resource exists. Create a resource-group-scoped wrapper module for Azure AI Search, then use a deterministic `existing` reference with `dependsOn` to read its admin key. Do not extract a Foundry key or ACR admin credentials. Foundry uses managed identity, and container image pulls use each Container App's system-assigned identity with `AcrPull`.
+
+### Bicep Requirements
+
+1. **Prefer AVM modules** for all resources — fall back to raw `Microsoft.*` only where AVM blocks deployment (document why)
+2. **Deterministic naming** — all resources named with `${abbrs.xxx}${resourceToken}` so `existing` refs can resolve
+3. **`azd-service-name` tags** on each Container App: `api` lets azd map its declared service, while `web` lets the postdeploy hook discover the storefront Container App. The web app serves on port 80 but is not declared as an azd service.
+4. **Output `AZURE_CONTAINER_REGISTRY_ENDPOINT`** (azd reads this for image push)
+5. **Wire Azure AI Search credentials** into API container secrets using `listAdminKeys()`. Configure Foundry with `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_DEPLOYMENT`; do not inject a Foundry API key into the deployed app.
+6. **Azure AI Search** — use `basic` SKU (not `free`), set `disableLocalAuth: false`, and set `semanticSearch: 'free'` to enable the semantic ranker
+7. **Microsoft Foundry** — use `br/public:avm/ptn/ai-ml/ai-foundry` with `baseName` (max 12 chars), an `aiModelDeployments` array for gpt-5-mini or the gpt-5.4-mini fallback, and `aiFoundryConfiguration.disableLocalAuth: false`. Enable system-assigned managed identity on the API container app.
+8. **Managed identity for Foundry** — assign the `Cognitive Services User` role (`a97b65f3-24c7-4388-baec-2e87135dc908`) from the API container app's managed identity to the AI Services resource. This allows the API to authenticate to Microsoft Foundry without API keys.
+9. **Container App startup probe** — `failureThreshold` max is 10 (not 30) when using the AVM container-app module. The API app's probes target `GET /api/health`.
+10. **Container Registry** — Basic tier. **Container Apps Environment** — set `zoneRedundant: false` (required in many regions, e.g. westus).
+11. **Soft-deleted Cognitive Services** — if a previous deployment fails or is torn down, the AI Services resource may be soft-deleted and block re-creation. Run `az cognitiveservices account list-deleted` and `az cognitiveservices account purge` before redeploying
+12. **AI model version is region-specific** — use `az cognitiveservices model list --location <region> --query "[?model.name=='gpt-5-mini' || model.name=='gpt-5.4-mini']"` to find the correct version before generating Bicep
+13. **ACR pull authentication** — use separate Bicep deployment phases for each app. The bootstrap module must create the Container App with a public placeholder image and system-assigned identity but no `configuration.registries` entry. Grant that principal `AcrPull`, then make a later module depend on the role assignment and update the same app with the ACR login server and `identity: 'system'`. A single module containing both the new identity and registry is not two-phase and can fail with an ACR token-exchange 401. Do not assume every azd version wires the registry automatically.
+14. **Placeholder compatibility** — the public placeholder must listen on the configured ingress and probe port and return HTTP 200 for the probe path. For the default Node.js deployment, configure both the placeholder and deployed API on port 80 while retaining `GET /api/health`.
+
+### Deployment
+
+1. Read the subscription with `az account show --query id -o tsv`, set `AZURE_SUBSCRIPTION_ID` to that value, then run `azd up`.
+2. **API cloud build:** Configure the API service in `azure.yaml` with `docker.remoteBuild: true` and `platform: linux/amd64`. Do not declare the web Container App as an azd build service; Bicep provisions it with a public placeholder image until the postdeploy hook runs.
+3. **Required postdeploy hook:** Generate `infra/hooks/postdeploy.js` and reference it directly from `azure.yaml` without `shell: sh`. The JavaScript hook must invoke `az acr build` with argument arrays to build the web image in Azure with `VITE_API_URL=<API_URL>/api` and `--platform linux/amd64`, then update the web Container App. Treat a revision using the expected image as ready when it is healthy and provisioned with a running state of either `Running` or `ScaledToZero`; `minReplicas: 0` makes scale-to-zero an expected healthy state. First-time success must not require Docker or a manual rebuild on the host.
+4. **All host architectures:** Build both deployment images in Azure Container Registry. Do not require Docker, Buildx, emulation, or privileged binfmt/QEMU handlers on the host.
+5. To replace SQLite, first implement the corresponding repository, provision the chosen cloud database, and configure its credentials. Then set `DATA_PROVIDER=cosmos` or `DATA_PROVIDER=postgres`.
+
+### Deployment Acceptance Criteria
+
+Deployment is complete only when every required check passes: `/api/health`, exactly 10 products, successful product images, non-empty semantic search, an assistant-shaped response to a product-comparison prompt that mentions **UltraBook Pro 15**, storefront HTTP 200, and the production API host in the built frontend assets. Use a comparison prompt rather than only a simple lookup so verification catches GPT-5 reasoning budgets that can be exhausted before visible content is produced. The journey README owns the command that executes these deployment checks. After completing the README assignment, run `azd down --force --purge`.

@@ -1,0 +1,133 @@
+name: Windows portable CLI smoke test
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/_utils.mjs"
+      - ".github/scripts/run-aks-command.mjs"
+      - ".github/skills/journey-runner/scripts/check-prerequisites.mjs"
+      - ".github/workflows/windows-portable-cli-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-portable-cli:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Create Azure CLI shims
+        shell: pwsh
+        run: |
+          $fake = Join-Path $env:RUNNER_TEMP "fake-azure-cli"
+          New-Item -ItemType Directory -Force -Path $fake | Out-Null
+
+          @'
+          @echo off
+          node "%~dp0fake-azd.mjs" %*
+          '@ | Set-Content -Encoding ascii (Join-Path $fake "azd.cmd")
+
+          @'
+          @echo off
+          node "%~dp0fake-az.mjs" %*
+          '@ | Set-Content -Encoding ascii (Join-Path $fake "az.cmd")
+
+          @'
+          const args = process.argv.slice(2);
+          if (args[0] === 'version') {
+            console.log('azd version 1.28.0');
+          } else if (args[0] === 'env' && args[1] === 'get-value') {
+            console.log('value with spaces;quotes"()');
+          } else if (args[0] === 'env' && args[1] === 'get-values') {
+            console.log(JSON.stringify({
+              AZURE_RESOURCE_GROUP: 'rg-test',
+              AZURE_AKS_CLUSTER_NAME: 'aks-test'
+            }));
+          } else if (args[0] === 'stdin') {
+            let input = '';
+            for await (const chunk of process.stdin) input += chunk;
+            console.log(input.trim());
+          } else if (args[0] === 'echo-args') {
+            console.log(JSON.stringify(args.slice(1)));
+          } else if (args[0] === 'cwd') {
+            console.log(process.cwd());
+          } else {
+            console.error(`unexpected azd args: ${JSON.stringify(args)}`);
+            process.exit(2);
+          }
+          '@ | Set-Content -Encoding utf8 (Join-Path $fake "fake-azd.mjs")
+
+          @'
+          const args = process.argv.slice(2);
+          if (args[0] === 'version') {
+            console.log('{}');
+          } else if (args.slice(0, 3).join(' ') === 'aks command invoke') {
+            console.log(JSON.stringify({
+              provisioningState: 'Succeeded',
+              exitCode: 0,
+              logs: 'remote diagnostic passed\n'
+            }));
+          } else {
+            console.error(`unexpected az args: ${JSON.stringify(args)}`);
+            process.exit(2);
+          }
+          '@ | Set-Content -Encoding utf8 (Join-Path $fake "fake-az.mjs")
+
+          $fake | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Exercise shared launcher and prerequisite checker
+        shell: pwsh
+        run: |
+          @'
+          import { join } from 'node:path';
+          import { run } from './.github/scripts/_utils.mjs';
+          const value = run('azd', ['env', 'get-value', 'TEST']).stdout.trim();
+          if (value !== 'value with spaces;quotes"()') throw new Error(value);
+          const cmdSafe = ['space value', 'semi;colon', "single'quote", 'brackets[]', 'equals=value', 'comma,value', 'colon:value', 'slash/value'];
+          const echoed = JSON.parse(run('azd', ['echo-args', ...cmdSafe]).stdout);
+          if (JSON.stringify(echoed) !== JSON.stringify(cmdSafe)) throw new Error(JSON.stringify(echoed));
+          const cmdUnsafe = ['quote"value', 'amp&value', 'pipe|value', 'less<value', 'greater>value', 'caret^value', 'percent%value', 'bang!value', 'paren(value)', 'line\nvalue'];
+          const exeSafe = [...cmdSafe, ...cmdUnsafe.filter((value) => !value.includes('"'))];
+          const echoScript = join(process.env.RUNNER_TEMP, 'fake-azure-cli', 'fake-azd.mjs');
+          const exeEchoed = JSON.parse(run(process.execPath, [echoScript, 'echo-args', ...exeSafe]).stdout);
+          if (JSON.stringify(exeEchoed) !== JSON.stringify(exeSafe)) throw new Error(JSON.stringify(exeEchoed));
+          let exeQuoteRejected = false;
+          try { run(process.execPath, [echoScript, 'echo-args', 'quote"value']); }
+          catch (error) { exeQuoteRejected = /cannot be passed safely/.test(String(error)); }
+          if (!exeQuoteRejected) throw new Error('Quoted native argument was not rejected');
+          for (const value of cmdUnsafe) {
+            let rejected = false;
+            try { run('azd', ['echo-args', value]); }
+            catch (error) { rejected = /cannot be passed safely/.test(String(error)); }
+            if (!rejected) throw new Error(`Unsafe .cmd argument was not rejected: ${JSON.stringify(value)}`);
+          }
+          const stdin = run('azd', ['stdin'], { input: 'stdin value\n' }).stdout.trim();
+          if (stdin !== 'stdin value') throw new Error(stdin);
+          const expectedCwd = new URL('./.github/', import.meta.url);
+          const actualCwd = run('azd', ['cwd'], { cwd: expectedCwd }).stdout.trim();
+          if (!actualCwd.replace(/\\/g, '/').toLowerCase().endsWith('/.github')) throw new Error(actualCwd);
+          '@ | node --input-type=module
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node .github/skills/journey-runner/scripts/check-prerequisites.mjs --required node,az,azd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Exercise fail-closed AKS diagnostic runner
+        shell: pwsh
+        run: |
+          $output = node .github/scripts/run-aks-command.mjs "kubectl get pods -n superset"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($output -notmatch "remote diagnostic passed") { throw "Unexpected output: $output" }
+
+          node .github/scripts/run-aks-command.mjs 'kubectl get pods; echo INJECTED'
+          if ($LASTEXITCODE -eq 0) { throw "Shell chaining was accepted" }
+
+          $quoted = @'
+          kubectl exec -n superset pod -c superset -- python -c 'import psycopg2; x=1'
+          '@.Trim()
+          node .github/scripts/run-aks-command.mjs $quoted
+          if ($LASTEXITCODE -ne 0) { throw "A semicolon inside a quoted argument was rejected" }
