@@ -133,7 +133,15 @@ graph TB
 
 ## The Spec
 
-SmartTodo is driven by [`PLAN.md`](./PLAN.md), the spec in this journey folder. It defines the data models, API contracts, AI prompt design, and seed data. Open the document and explore it before you start so you know what the finished app should do. GitHub Copilot will use the details as implementation context.
+SmartTodo is driven by a small set of linked specs. [`PLAN.md`](./PLAN.md) defines the vision, shared decisions, phase boundaries, and end-to-end acceptance criteria. Each phase has a focused implementation plan:
+
+| Phase | Spec |
+| --- | --- |
+| Build the API and AI integration | [`PLAN-phase1-api.md`](./PLAN-phase1-api.md) |
+| Build the iOS app | [`PLAN-phase2-ios.md`](./PLAN-phase2-ios.md) |
+| Deploy to Azure | [`PLAN-phase3-azure.md`](./PLAN-phase3-azure.md) |
+
+Read the [`PLAN.md` overview](./PLAN.md) before you start to understand the target application, shared technology decisions, phase boundaries, and end-to-end acceptance criteria. Then use the linked section in the current phase plan to identify the exact contract for the work you are about to generate. This keeps implementation context focused while preserving stable contracts between phases.
 
 **Core data model (the parts you'll build):**
 
@@ -157,13 +165,13 @@ SmartTodo is driven by [`PLAN.md`](./PLAN.md), the spec in this journey folder. 
 
 ## The Journey
 
-SmartTodo is built in three phases, each backed by a section of `PLAN.md`. Phase 1 builds the API and AI integration with Azure SQL using the spec's "API" section. Phase 2 adds the SwiftUI app on Mac from the "iOS Client" section. Phase 3 deploys the backend using the "Azure Deployment" section. Keep [`PLAN.md`](./PLAN.md) open as the shared spec throughout.
+SmartTodo is built in three phases that combine incremental generation, inspection, testing, review, and deployment. [`PLAN.md`](./PLAN.md) is the shared overview, and each phase prompt names the focused plan it needs.
 
 **How this journey works:** You won't paste one giant prompt and hope for a finished app. You'll work incrementally. Ask GitHub Copilot for one piece, inspect what it generated, test it, fix what needs attention, and then continue. The loop is simple: generate → inspect → test → refine.
 
 **What AI model should I choose?**
 
-Use a capable frontier model for architecture decisions, changes spanning several files, and difficult debugging because it will generally follow the specification more reliably and produce more complete results, though it may take longer and consume more premium requests or incur higher usage costs. Smaller models are often sufficient for focused coding, test updates, and clearly identified fixes. If a smaller model misses requirements or struggles to connect `PLAN.md`, API, and iOS client details, switch to a frontier model; choose based on task complexity rather than a specific model name.
+Use a capable frontier model for architecture decisions, changes spanning several files, and difficult debugging because it will generally follow the specification more reliably and produce more complete results, though it may take longer and consume more premium requests or incur higher usage costs. Smaller models are often sufficient for focused coding, test updates, and clearly identified fixes. If a smaller model misses requirements or struggles to connect the overview, phase plan, API, and iOS client details, switch to a frontier model; choose based on task complexity rather than a specific model name.
 
 > **💡 Tip: Track issues as you go.** Add *"If you encounter any issues, log them to issues.md so they can be tracked and fixed"* to your prompt. GitHub Copilot creates `issues.md` at `journeys/smart-todo/issues.md` in your workspace the first time it has something to record. This keeps generation and deployment problems in one place while you iterate.
 
@@ -275,10 +283,18 @@ If you haven't installed the Azure Skills plugin yet, do it now. This one-time s
 
 Start with the data models and repository pattern, not the full API. This lets you inspect the generated code before building on top of it. **Generate the project first**, then align `local.settings.json` with the template below.
 
-> **Default stack:** Node.js + TypeScript + Azure Functions v4. Prefer another language? Swap it in the prompt and use PLAN.md’s Choose Your Stack table. Todo `status` values are `pending` | `in_progress` | `completed`.
+> **Default stack:** Node.js + TypeScript + Azure Functions v4. Prefer another language? Swap it in the prompt and use the [Choose Your Stack table](./PLAN-phase1-api.md#choose-your-stack) in `PLAN-phase1-api.md`. Todo `status` values are `pending` | `in_progress` | `completed`.
+
+Before you run the prompt, review:
+
+- [`PLAN.md` overview](./PLAN.md): Confirm the application boundaries and shared decisions.
+- [Choose Your Stack](./PLAN-phase1-api.md#choose-your-stack): Identify the framework and libraries for your language.
+- [Data Access Layer](./PLAN-phase1-api.md#data-access-layer): Check the repository contracts and factory boundary.
+- [Data Models](./PLAN-phase1-api.md#data-models): Check every field, default, and constraint.
+- [Seed Data](./PLAN-phase1-api.md#seed-data): Check the exact IDs and initial values used by later verification.
 
 ```
-> Read the PLAN.md file in this directory. Create an Azure Functions
+> Read PLAN.md and PLAN-phase1-api.md in this directory. Create an Azure Functions
   Node.js TypeScript project (v4 programming model) in a src/api/ subdirectory
   (or my chosen stack if I say otherwise). Initialize 
   with host.json, local.settings.json, and language-appropriate config.
@@ -339,8 +355,14 @@ If anything's off, tell GitHub Copilot:
 
 Now add the Azure Functions HTTP triggers that use the repository interfaces.
 
+Before you run the prompt, review:
+
+- [API Endpoints](./PLAN-phase1-api.md#api-endpoints): Check each route's input, response shape, status code, and business rules.
+- [Error Response Format](./PLAN-phase1-api.md#error-response-format): Check the common error envelope and status-code mapping.
+- [Auto-completion rule](./PLAN-phase1-api.md#patch-apitodosidstepsstepid): Confirm how step updates change the parent todo status.
+
 ```
-> Read the "API Endpoints" section in PLAN.md. Create HTTP-triggered functions
+> Read the "API Endpoints" section in PLAN-phase1-api.md. Create HTTP-triggered functions
   in src/api/src/functions/ for each endpoint: getTodos, createTodo, 
   updateTodo, deleteTodo, generateSteps, and updateStep. Each function 
   should get a DataStore from the factory — never import the database 
@@ -362,8 +384,8 @@ Check the step update function:
 2. Does it set the todo back to `in_progress` when a completed step is unchecked?
 
 ```
-> The updateStep function doesn't auto-complete the parent todo when all 
-  steps are marked done. Read the "Auto-completion rule" in PLAN.md and 
+> The updateStep function doesn't auto-complete the parent todo when all
+  steps are marked done. Read the "Auto-completion rule" in PLAN-phase1-api.md and
   implement it.
 ```
 
@@ -373,8 +395,13 @@ Check the step update function:
 
 Now wire up the real AI call to replace the stub.
 
+Before you run the prompt, review:
+
+- [AI Task Decomposition](./PLAN-phase1-api.md#ai-task-decomposition): Check the system prompt, model settings, parsing rules, environment variables, and regenerate behavior.
+- [`POST /api/todos/:id/generate-steps`](./PLAN-phase1-api.md#post-apitodosidgenerate-steps): Confirm the endpoint contract and 503 error path.
+
 ```
-> Read the "AI Task Decomposition" section in PLAN.md.
+> Read the "AI Task Decomposition" section in PLAN-phase1-api.md.
   Implement the generateSteps function to call gpt-5-mini via the openai SDK for
   my language. Use the exact system prompt from the "AI Task Decomposition"
   section. The client 
@@ -469,10 +496,17 @@ If any test fails, describe the failure to GitHub Copilot and let it fix it:
 
 > **New to Swift?** SwiftUI uses `Codable` for JSON serialization (similar to TypeScript interfaces), `async/await` for network calls (same concept as JavaScript/Python), and `#if DEBUG` for compile-time feature flags. The `.xcodeproj` file is Xcode's project format. GitHub Copilot generates both the Swift source files and the `.xcodeproj` that references them, but you'll open the project in Xcode to build and run it.
 
+Before you run the prompt, review:
+
+- [`PLAN.md` overview](./PLAN.md): Confirm the application boundaries.
+- [Phase 1 API plan](./PLAN-phase1-api.md): Confirm the fixed Todo, ActionStep, error, and REST contracts.
+- [iOS Client](./PLAN-phase2-ios.md#ios-client): Check the platform, models, API client, and view requirements.
+
 #### Step 1: Generate the SwiftUI project
 
 ```
-> Read the "iOS Client" section in PLAN.md. Create a SwiftUI iOS app in
+> Read PLAN.md, PLAN-phase1-api.md, and the "iOS Client" section in
+  PLAN-phase2-ios.md. Create a SwiftUI iOS app in
   src/ios/SmartTodo/. Include:
   - An Xcode project at src/ios/SmartTodo/SmartTodo.xcodeproj that references
     every generated Swift file, targets iOS 17 or later, and builds for the
@@ -483,7 +517,8 @@ If any test fails, describe the failure to GitHub Copilot and let it fix it:
   - Views: TodoListView (main list), AddTodoView (sheet), 
     TodoDetailView (with Generate Steps button), ActionStepsView 
     (ordered checkable list with progress bar)
-  Use the exact model fields and view descriptions from the spec.
+  Use the exact model fields from PLAN-phase1-api.md and view descriptions
+  from PLAN-phase2-ios.md.
   Confirm the project opens and builds before you finish.
 ```
 
@@ -561,15 +596,23 @@ Continue working from `journeys/smart-todo` for the rest of the journey.
 
 Before generating deployment infrastructure, review the complete SmartTodo implementation.
 
+Use these documents as the review contract:
+
+- [`PLAN.md` overview](./PLAN.md): Verify the end state and cross-phase contracts.
+- [Phase 1 API and AI plan](./PLAN-phase1-api.md): Find missing API, data, or AI behavior and contract drift.
+- [Phase 2 iOS plan](./PLAN-phase2-ios.md): Find missing SwiftUI behavior or API-client contract drift.
+- [Phase 3 Azure plan](./PLAN-phase3-azure.md): Confirm that the application exposes the configuration and build surfaces required for deployment.
+
 ```text
-> /review Review the completed SmartTodo implementation against PLAN.md.
+> /review Review the completed SmartTodo implementation against PLAN.md,
+  PLAN-phase1-api.md, PLAN-phase2-ios.md, and PLAN-phase3-azure.md.
   Identify missing or incorrectly implemented requirements and correctness,
   security, or reliability issues.
 ```
 
 Address any high-confidence correctness, security, or reliability findings before continuing.
 
-> **💡 Get multiple perspectives:** Run `/rubber-duck` with the same review request against multiple models. Compare their findings and act on issues that are specific, reproducible, and relevant to the requirements in `PLAN.md`.
+> **💡 Get multiple perspectives:** Run `/rubber-duck` with the same review request against multiple models. Compare their findings and act on issues that are specific, reproducible, and relevant to the [`PLAN.md` overview](./PLAN.md) and all three phase plans.
 
 ---
 
@@ -583,10 +626,20 @@ Address any high-confidence correctness, security, or reliability findings befor
 
 ##### Step 1: Generate infrastructure
 
-The prompt stays short on purpose: the complete deployment contract including AVM module choices, Flex Consumption settings, SQL and firewall rules, app settings, outputs, and both post-provision hooks, lives in the "Azure Deployment" section of `PLAN.md`.
+The prompt stays short on purpose. The complete deployment contract, including AVM module choices, Flex Consumption settings, SQL and firewall rules, app settings, outputs, and both post-provision hooks, lives in the [Azure Deployment](./PLAN-phase3-azure.md#azure-deployment) section of `PLAN-phase3-azure.md`.
+
+Before you run the prompt, review:
+
+- [`PLAN.md` overview](./PLAN.md): Confirm the end state and cross-phase contracts.
+- [Phase 1 API plan](./PLAN-phase1-api.md): Confirm the application and database contracts that deployment must preserve.
+- [Azure Deployment](./PLAN-phase3-azure.md#azure-deployment): Identify the required resources, Flex Consumption settings, hooks, outputs, and deployment acceptance criteria.
+- [Bicep Requirements](./PLAN-phase3-azure.md#bicep-requirements): Verify identity, role, SQL, AI, storage, and app-setting wiring.
+- [Post-Provision: Managed Identity SQL Access](./PLAN-phase3-azure.md#post-provision-managed-identity-sql-access): Confirm the portable hook contract.
+- [Deployment Acceptance Criteria](./PLAN-phase3-azure.md#deployment-acceptance-criteria): Confirm the live checks the deployment must pass.
 
 ```
-> Read the "Azure Deployment" section in PLAN.md. Create everything it
+> Read PLAN.md and the "Azure Deployment" section in PLAN-phase3-azure.md.
+  Create everything it
   specifies: the Bicep in infra/ from its "Azure Resources," "Flex Consumption
   Configuration," and "Bicep Requirements" subsections, azure.yaml exactly as
   its "azure.yaml" subsection shows with language ts (or my chosen stack), and
@@ -605,7 +658,8 @@ After generation completes, run this pre-deployment review prompt:
 ```
 > Perform a read-only pre-deployment review of the generated SmartTodo
   infrastructure and azd configuration. Do not modify files or deploy.
-  Check every requirement in the "Azure Deployment" section of PLAN.md,
+  Check every requirement in the "Azure Deployment" section of
+  PLAN-phase3-azure.md,
   including its "Azure Resources," "azure.yaml," "Flex Consumption
   Configuration," "Bicep Requirements," "Post-Provision: Managed Identity SQL
   Access," "Database Schema Initialization," and "Known Deployment Gotchas"
@@ -619,7 +673,7 @@ After generation completes, run this pre-deployment review prompt:
 
 Step 2 sets `AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, and `AZURE_PRINCIPAL_TYPE` for you. Confirm all three are populated before you run `azd up`.
 
-**💡 What you're learning:** Managed identity lets the Function App authenticate to Azure SQL without passwords. The AI call uses the plain `openai` SDK with an OpenAI-compatible `/openai/v1/` base URL and an app setting for `AZURE_AI_KEY`. Notice also that neither prompt enumerated the infrastructure requirements. `PLAN.md`'s "Azure Deployment" section is the contract, and both the generation and the review bind to it. When a deployment teaches you a new gotcha, record it in the plan not in an ever-longer prompt.
+**💡 What you're learning:** Managed identity lets the Function App authenticate to Azure SQL without passwords. The AI call uses the plain `openai` SDK with an OpenAI-compatible `/openai/v1/` base URL and an app setting for `AZURE_AI_KEY`. Notice also that neither prompt enumerated the infrastructure requirements. The "Azure Deployment" section in `PLAN-phase3-azure.md` is the contract, and both the generation and the review bind to it. When a deployment teaches you a new gotcha, record it in the phase plan, not in an ever-longer prompt.
 
 ##### Step 2: Deploy
 
@@ -696,7 +750,7 @@ Do not continue until `azd up` and the post-provision hook exit successfully.
 >
 > 1. Watch your resources appear in real-time. Open the [Azure Portal](https://portal.azure.com) → search for your resource group, or run `az resource list --resource-group rg-<env-name> --output table` in a separate terminal.
 > 2. Re-read your `infra/main.bicep`. Can you trace how SQL access, AI settings, and deployment outputs flow into the Function App?
-> 3. Preview what's next: open `PLAN.md` and re-read the "Known Deployment Gotchas" section. Which ones did your generated infrastructure already avoid?
+> 3. Preview what's next: open `PLAN-phase3-azure.md` and re-read the "Known Deployment Gotchas" section. Which ones did your generated infrastructure already avoid?
 > 4. Ask the agent: *"/btw Explain which parts of this deployment use managed identity and which parts use app settings."*
 
 Deployment may take several minutes. If it fails, ask GitHub Copilot to help diagnose:
@@ -757,7 +811,7 @@ Create a GitHub issue and assign it to GitHub Copilot:
     Azure SQL, Microsoft Foundry (gpt-5-mini), and monitoring
   - Create azure.yaml with a single 'api' service (host: function)
   - Use managed identity for SQL and the plain openai SDK with AZURE_AI_KEY for AI
-  - Follow the "Azure Deployment" section in PLAN.md, including the
+  - Follow the "Azure Deployment" section in PLAN-phase3-azure.md, including the
     postprovision hook it specifies
   Assign the issue to Copilot.
 ```
@@ -941,7 +995,7 @@ It must prove seed reads, create, AI step generation, step completion, deletion,
    - *"Add rate limiting to the generate-steps endpoint, max 10 calls per userId per hour."*
    - *"Change the function auth level from Anonymous to Function and configure the iOS app to send the function key."*
 
-   See [Production Hardening (Out of Scope)](./PLAN.md#production-hardening-out-of-scope) in PLAN.md for the full list of recommendations.
+   See [Production Hardening (Out of Scope)](./PLAN.md#production-hardening-out-of-scope) in the `PLAN.md` overview for the full list of recommendations.
 
 ---
 
@@ -986,7 +1040,10 @@ Explore the other journeys:
 
 ## Resources
 
-- [SmartTodo Spec](./PLAN.md): The plan document used by GitHub Copilot to scaffold the app
+- [SmartTodo Plan](./PLAN.md): Vision, shared decisions, phase map, and end-to-end acceptance criteria
+- [Phase 1 API and AI Plan](./PLAN-phase1-api.md): API, data, seed-data, and AI task-decomposition requirements
+- [Phase 2 iOS Plan](./PLAN-phase2-ios.md): SwiftUI client requirements
+- [Phase 3 Azure Plan](./PLAN-phase3-azure.md): Infrastructure and deployment requirements
 - [Azure Functions Flex Consumption plan](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
 - [Azure Functions developer guide](https://learn.microsoft.com/azure/azure-functions/functions-reference)
 - [Azure SQL managed identity auth](https://learn.microsoft.com/azure/azure-sql/database/authentication-aad-configure)
