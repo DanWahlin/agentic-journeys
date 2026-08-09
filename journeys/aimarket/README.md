@@ -122,7 +122,16 @@ graph TB
 
 ## The Spec
 
-AIMarket is driven by [`PLAN.md`](./PLAN.md), the spec in this journey folder. It defines the data models, API contracts, validation rules, and seed data. Open the document and explore it before you start so you know what the finished app should do. GitHub Copilot will use the details as implementation context.
+AIMarket is driven by a small set of linked specs. [`PLAN.md`](./PLAN.md) defines the vision, shared decisions, phase boundaries, and end-to-end acceptance criteria. Each phase has a focused implementation plan:
+
+| Phase | Spec |
+| --- | --- |
+| Build the API | [`PLAN-phase1-api.md`](./PLAN-phase1-api.md) |
+| Build the storefront | [`PLAN-phase2-storefront.md`](./PLAN-phase2-storefront.md) |
+| Add AI features | [`PLAN-phase3-ai.md`](./PLAN-phase3-ai.md) |
+| Deploy to Azure | [`PLAN-phase4-azure.md`](./PLAN-phase4-azure.md) |
+
+Read the [`PLAN.md` overview](./PLAN.md) before you start to understand the target application, shared technology decisions, phase boundaries, and end-to-end acceptance criteria. Then use the linked section in the current phase plan to identify the exact contract for the work you are about to generate. This keeps implementation context focused while preserving stable contracts between phases.
 
 **Core data model (the parts you'll build):**
 
@@ -149,13 +158,13 @@ AIMarket is driven by [`PLAN.md`](./PLAN.md), the spec in this journey folder. I
 
 ## The Journey
 
-AIMarket is built in four phases that combine interactive prompting, code review, asynchronous delegation, and deployment. The [`PLAN.md`](./PLAN.md) spec is your shared context throughout.
+AIMarket is built in four phases that combine interactive prompting, code review, asynchronous delegation, and deployment. [`PLAN.md`](./PLAN.md) is the shared overview, and each phase prompt names the focused plan it needs.
 
 **How this journey works:** You won't paste one giant prompt and hope for a finished app. You'll work incrementally: ask GitHub Copilot for one piece, inspect what it generated, test it, fix what needs attention, and then continue. The loop is simple: generate → inspect → test → refine.
 
 **What AI model should I choose?**
 
-Use a capable frontier model for architecture decisions, changes spanning several files, and difficult debugging because it will generally follow the specification more reliably and produce more complete results, though it may take longer and consume more premium requests or incur higher usage costs. Smaller models are often sufficient for focused coding, test updates, and clearly identified fixes. If a smaller model misses requirements or struggles to connect `PLAN.md`, API, and frontend details, switch to a frontier model; choose based on task complexity rather than a specific model name.
+Use a capable frontier model for architecture decisions, changes spanning several files, and difficult debugging because it will generally follow the specification more reliably and produce more complete results, though it may take longer and consume more premium requests or incur higher usage costs. Smaller models are often sufficient for focused coding, test updates, and clearly identified fixes. If a smaller model misses requirements or struggles to connect the overview, phase plan, API, and frontend details, switch to a frontier model; choose based on task complexity rather than a specific model name.
 
 > **💡 Tip: Track issues as you go.** Add *"If you encounter any issues, log them to issues.md so they can be tracked and fixed"* to your prompt. This keeps generation and deployment problems in one place while you iterate.
 
@@ -256,10 +265,16 @@ If you haven't installed the Azure Skills plugin yet, do it now. This one-time s
 
 Start with the data models rather than the whole API. This lets you inspect the generated code before building on top of it.
 
-> **Default stack:** Node.js + TypeScript + Express. Prefer another language? Swap it in the prompt and use PLAN.md’s Choose Your Stack table.
+> **Default stack:** Node.js + TypeScript + Express. Prefer another language? Swap it in the prompt and use the [Choose Your Stack table](./PLAN-phase1-api.md#choose-your-stack) in `PLAN-phase1-api.md`.
+
+Before you run the prompt, review:
+
+- [`PLAN.md` overview](./PLAN.md): Confirm the application boundaries.
+- [Choose Your Stack](./PLAN-phase1-api.md#choose-your-stack): Identify the framework and SQLite library for your language.
+- [Data Models](./PLAN-phase1-api.md#data-models): Review each field, default, constraint, and validation rule that the generated types must implement.
 
 ```
-> Read the PLAN.md file in this directory. Create a Node.js/Express with TypeScript
+> Read PLAN.md and PLAN-phase1-api.md in this directory. Create a Node.js/Express with TypeScript
   project in an api/ subdirectory (or my chosen stack if I say otherwise).
   Initialize the project with the standard build files.
   Then create just the data models from the "Data Models" section: Product, Order
@@ -271,7 +286,7 @@ Start with the data models rather than the whole API. This lets you inspect the 
 **🔍 Inspect what was generated:**
 
 Open the Product model file. Look for:
-- Does the `Product` type match the PLAN.md "Product" section? (id, name, description, price, category, tags, etc.)
+- Does the `Product` type match the [`Product` section in `PLAN-phase1-api.md`](./PLAN-phase1-api.md#product)? (id, name, description, price, category, tags, etc.)
 - Does validation check that `price > 0` and `category` is from the allowed list?
 - Are the constraints right? (name 1-200 chars, inventory >= 0)
 
@@ -279,7 +294,7 @@ If anything's off, tell GitHub Copilot:
 
 ```
 > The Product validation doesn't check that category is one of the allowed 
-  values in the "Product" section of PLAN.md. Fix it to reject invalid
+  values in the "Product" section of PLAN-phase1-api.md. Fix it to reject invalid
   categories.
 ```
 
@@ -289,8 +304,14 @@ If anything's off, tell GitHub Copilot:
 
 Now add the database layer. The spec calls for a repository pattern so you can swap SQLite for Cosmos DB later without changing route code.
 
+Before you run the prompt, review:
+
+- [Data Access Layer](./PLAN-phase1-api.md#data-access-layer): Check the repository interfaces, SQLite storage rules, and provider-factory boundary.
+- [Choose Your Stack](./PLAN-phase1-api.md#choose-your-stack): Find the correct SQLite library.
+- [Seed Data](./PLAN-phase1-api.md#seed-data): Check the exact users, products, IDs, and initial values that make later checks deterministic.
+
 ```
-> Read the "Data Access Layer" section in PLAN.md. Create the repository pattern
+> Read the "Data Access Layer" section in PLAN-phase1-api.md. Create the repository pattern
   for [YOUR LANGUAGE]:
   1. Repository interfaces/protocols for Product, Order, and User
   2. SQLite implementation using the recommended library from the Choose Your Stack table
@@ -317,10 +338,15 @@ Open the SQLite implementation file and look for:
 
 Now add the route handlers that use the repository interfaces.
 
+Before you run the prompt, review:
+
+- [API Endpoints](./PLAN-phase1-api.md#api-endpoints): Check each route's input, response shape, status code, filtering, and order-processing rules.
+- [Error Format](./PLAN-phase1-api.md#error-format): Check the common error envelope that every route and the global error handler must return.
+
 ```
 > Create route handlers for products, orders, and users. Each should
   receive a DataStore (repository) parameter — never import the database 
-  directly. Follow the "API Endpoints" section in PLAN.md. Also create a
+  directly. Follow the "API Endpoints" section in PLAN-phase1-api.md. Also create a
   global error handler matching the "Error Format" section, and the
   main entry point with CORS, JSON body parsing, a GET /api/health endpoint, 
   and all routes mounted at /api. Configure the API to listen on 0.0.0.0,
@@ -435,16 +461,25 @@ Once the API is running and the endpoints respond correctly, stop the API with C
 
 Run the following prompt. Ensure that you replace `[YOUR API PORT]` with the port you used for the API (for example: 3000). The frontend will proxy `/api` requests to that port.
 
+Before you run the prompt, review:
+
+- [`PLAN.md` overview](./PLAN.md): Confirm the fixed API contract.
+- [Frontend](./PLAN-phase2-storefront.md#frontend): Identify the required pages, components, state, and API client.
+- [SearchBar: Client-Side Filtering](./PLAN-phase2-storefront.md#searchbar-client-side-filtering): Check the local name-and-tag matching behavior.
+- [ChatWidget: Shared Layout](./PLAN-phase2-storefront.md#chatwidget-shared-layout): Check the reusable chat shell.
+- [ChatWidget: Placeholder State](./PLAN-phase2-storefront.md#chatwidget-placeholder-state): Check the temporary behavior to implement before AI integration.
+
 ```
 > Create a React frontend for AIMarket in a client/ directory using Vite, 
-  TypeScript, and Tailwind CSS. The frontend is always React regardless of 
-  your API language. Read the "Frontend" section in PLAN.md. Build:
+  TypeScript, and Tailwind CSS. The frontend is always React regardless of
+  your API language. Read PLAN.md and the "Frontend" section in
+  PLAN-phase2-storefront.md. Build:
   - Product grid page with the "SearchBar: Client-Side Filtering" behavior and
     category filter buttons
   - Product detail page with Add to Cart
   - Shopping cart page with Place Order
   - A ChatWidget component that follows the "ChatWidget: Shared Layout" and
-    "ChatWidget: Placeholder State" sections in PLAN.md
+    "ChatWidget: Placeholder State" sections in PLAN-phase2-storefront.md
   Do not implement "SearchBar: AI Search Integration" or
   "ChatWidget: AI Integration" yet.
   Set up a Vite proxy so /api requests go to http://localhost:[YOUR API PORT].
@@ -548,11 +583,18 @@ This phase has two goals: integrate Azure AI services and delegate a well-scoped
 
 This one you'll do interactively so you can see how search integration works.
 
+Before you run the prompt, review:
+
+- [Semantic Product Search](./PLAN-phase3-ai.md#semantic-product-search): Check the index schema, endpoint contract, local fallback, and indexing flow.
+- [Semantic Search Environment Variables](./PLAN-phase3-ai.md#semantic-search-environment-variables): Check how configuration selects Azure AI Search or SQLite.
+- [SearchBar: AI Search Integration](./PLAN-phase2-storefront.md#searchbar-ai-search-integration): Check the toggle, request, loading, error, and result behavior.
+
 ```
 > Add Azure AI Search integration to AIMarket. Read the
-  "Semantic Product Search" section in PLAN.md, including
+  "Semantic Product Search" section in PLAN-phase3-ai.md, including
   "Semantic Search Environment Variables," and the
-  "SearchBar: AI Search Integration" section for the full spec.
+  "SearchBar: AI Search Integration" section in PLAN-phase2-storefront.md
+  for the full spec.
   Do not provision Azure resources.
   Add a POST /api/products/search endpoint that uses SQLite fallback search
   when Azure Search settings are absent. When settings are present, create or
@@ -617,15 +659,23 @@ The shopping assistant is a good candidate for cloud delegation, but delegation 
 
 **Why consider delegation?** The shopping assistant is well-scoped (one endpoint + one component) with clear implementation requirements in the spec. That makes it a good candidate for async delegation since you don't need to be in the loop for every decision.
 
+Before you select an option, review:
+
+- [Shopping Assistant](./PLAN-phase3-ai.md#shopping-assistant): Check catalog grounding, request and response contracts, model settings, and failure behavior.
+- [Shopping Assistant Environment Variables](./PLAN-phase3-ai.md#shopping-assistant-environment-variables): Check the local and deployed configuration.
+- [ChatWidget: Shared Layout](./PLAN-phase2-storefront.md#chatwidget-shared-layout): Check the existing component structure.
+- [ChatWidget: AI Integration](./PLAN-phase2-storefront.md#chatwidget-ai-integration): Check message history, loading, error, and response behavior.
+
 **Option A: Continue in your current session**
 
 ```
 > Create the AI shopping assistant for AIMarket. Read the
-  "Shopping Assistant" section in PLAN.md and implement its
+  "Shopping Assistant" section in PLAN-phase3-ai.md and implement its
   POST /api/chat requirements using the Microsoft Foundry SDK for my language.
-  Read the "ChatWidget: Shared Layout," "ChatWidget: AI Integration," and
-  "Shopping Assistant Environment Variables" sections and implement their
-  requirements. Verify the implementation against all referenced PLAN.md
+  Read the "ChatWidget: Shared Layout" and "ChatWidget: AI Integration"
+  sections in PLAN-phase2-storefront.md, and the "Shopping Assistant
+  Environment Variables" section in PLAN-phase3-ai.md. Implement their
+  requirements. Verify the implementation against all referenced plan
   requirements.
 ```
 
@@ -635,12 +685,13 @@ If you have access to GitHub cloud agent, you can delegate asynchronously and ha
 
 ```
 > /delegate Create the AI shopping assistant for AIMarket. Read
-  journeys/aimarket/PLAN.md in the pushed repository. Implement the requirements
+  journeys/aimarket/PLAN.md, PLAN-phase2-storefront.md, and PLAN-phase3-ai.md
+  in the pushed repository. Implement the requirements
   in "Shopping Assistant," including POST /api/chat. Implement the frontend
   requirements in "ChatWidget: Shared Layout" and
   "ChatWidget: AI Integration." Follow
   "Shopping Assistant Environment Variables" for local and deployed
-  configuration. Verify the implementation against all referenced PLAN.md
+  configuration. Verify the implementation against all referenced plan
   requirements.
 ```
 
@@ -653,7 +704,8 @@ Create a file named `issue-body.md` with this content:
 Add the AI shopping assistant to AIMarket.
 
 ## Spec
-Read `journeys/aimarket/PLAN.md` in the pushed repository. Implement:
+Read `journeys/aimarket/PLAN.md`, `PLAN-phase2-storefront.md`, and
+`PLAN-phase3-ai.md` in the pushed repository. Implement:
 1. **POST /api/chat** endpoint (see 'Shopping Assistant')
    - Uses the Microsoft Foundry SDK for this project's language
    - Fetches all active products and injects them into the system prompt
@@ -705,7 +757,7 @@ If something's off, comment on the PR and let the agent fix it. Then merge:
 gh pr merge <PR_NUMBER>
 ```
 
-> **If the agent's PR has an issue:** After 2 rounds of feedback, close the PR and implement it yourself interactively using the "Shopping Assistant," "Shopping Assistant Environment Variables," "ChatWidget: Shared Layout," and "ChatWidget: AI Integration" sections in PLAN.md. Not every task is a good fit for delegation, and that's a lesson too.
+> **If the agent's PR has an issue:** After 2 rounds of feedback, close the PR and implement it yourself interactively using [Shopping Assistant](./PLAN-phase3-ai.md#shopping-assistant), [Shopping Assistant Environment Variables](./PLAN-phase3-ai.md#shopping-assistant-environment-variables), [ChatWidget: Shared Layout](./PLAN-phase2-storefront.md#chatwidget-shared-layout), and [ChatWidget: AI Integration](./PLAN-phase2-storefront.md#chatwidget-ai-integration). Not every task is a good fit for delegation, and that's a lesson too.
 
 **💡 What you're learning:** Cloud-agent work starts with a well-scoped issue and ends with your review. Self-contained tasks work best because the agent can read the spec and prove its work against testable acceptance criteria. Use interactive prompting when you need to steer each decision; delegate when the boundaries are already clear.
 
@@ -713,15 +765,24 @@ gh pr merge <PR_NUMBER>
 
 Before generating deployment infrastructure, review the complete AIMarket implementation. If you delegated the shopping assistant, review the PR and merge it (you can ask GitHub Copilot to review a PR), then pull the latest changes to your local machine.
 
+Before you run the review, check:
+
+- [`PLAN.md` overview](./PLAN.md): Verify the end state and cross-phase contracts.
+- [Phase 1 API plan](./PLAN-phase1-api.md): Find missing API behavior or contract drift.
+- [Phase 2 Storefront plan](./PLAN-phase2-storefront.md): Find missing frontend behavior or contract drift.
+- [Phase 3 AI plan](./PLAN-phase3-ai.md): Find missing AI behavior or contract drift.
+- [Phase 4 Azure plan](./PLAN-phase4-azure.md): Confirm that the application exposes the health, configuration, and build surfaces required for deployment.
+
 ```text
-> /review Review the completed AIMarket implementation against PLAN.md.
+> /review Review the completed AIMarket implementation against PLAN.md and all
+  four PLAN-phase*.md files.
   Identify missing or incorrectly implemented requirements and correctness,
   security, or reliability issues.
 ```
 
 Address any high-confidence correctness, security, or reliability findings before continuing.
 
-> **💡 Get multiple perspectives:** Run `/rubber-duck` with the same review request against multiple models. Compare their findings and act on issues that are specific, reproducible, and relevant to the requirements in `PLAN.md`.
+> **💡 Get multiple perspectives:** Run `/rubber-duck` with the same review request against multiple models. Compare their findings and act on issues that are specific, reproducible, and relevant to the [`PLAN.md` overview](./PLAN.md) and the four linked phase plans above.
 
 ---
 
@@ -741,13 +802,18 @@ The command must list at least one supported model. Stop before provisioning if 
 
 #### Step 1: Generate infrastructure
 
-The "Azure Deployment" section in PLAN.md and the `container-apps-deployment` skill contain the infrastructure requirements used in this journey, including resources, Dockerfiles, and the postdeploy hook. That context keeps the deployment prompt short:
+Before you run the prompt, review:
+
+- [Azure Deployment](./PLAN-phase4-azure.md#azure-deployment): Identify the required resources, container settings, Bicep outputs, AVM validation rules, raw-resource fallback conditions, and deployment acceptance criteria.
+- [`container-apps-deployment` skill](../../.github/skills/container-apps-deployment/SKILL.md): Check the reusable Container Apps rules that prevent ACR authentication, zone redundancy, cross-platform hook, and SPA build-time configuration failures.
+
+This context keeps the deployment prompt short:
 
 ```
-> Read the "Azure Deployment" section in PLAN.md and the container-apps-deployment
+> Read PLAN.md, the "Azure Deployment" section in PLAN-phase4-azure.md, and the container-apps-deployment
   skill. Create everything those two sources specify to deploy AIMarket to Azure Container
   Apps: Bicep in infra/, Dockerfiles and .dockerignore files for api/ and
-  client/, azure.yaml, and the required postdeploy hook wired into azure.yaml.
+  client/, azure.yaml, and the required postprovision and postdeploy hooks wired into azure.yaml.
   Default stack: Node.js API + React client. Set the location to westus.
   Log issues to issues.md.
 ```
@@ -756,21 +822,31 @@ If you're asked any questions after submitting the prompt, accept the recommende
 
 After generation completes, run this pre-deployment review prompt:
 
+During the review, check:
+
+- [Containerization](./PLAN-phase4-azure.md#containerization): Verify both image builds and runtime ports.
+- [Azure Resources](./PLAN-phase4-azure.md#azure-resources): Account for every required service.
+- [AVM Validation and Raw Fallback](./PLAN-phase4-azure.md#avm-validation-and-raw-fallback): Inspect the compiled resource graph and fallback evidence.
+- [Bicep Requirements](./PLAN-phase4-azure.md#bicep-requirements): Verify identity, role, secret, probe, tag, and output wiring.
+- [Deployment](./PLAN-phase4-azure.md#deployment): Verify `azure.yaml` and both lifecycle hooks.
+
 ```
 > Perform a read-only pre-deployment review of the generated AIMarket
   infrastructure and container configuration. Do not modify files or deploy.
-  Check every requirement in the "Azure Deployment" section of PLAN.md
+  Check every requirement in the "Azure Deployment" section of PLAN-phase4-azure.md
   (Containerization, Azure Resources, Bicep Requirements, and Deployment) and
-  in the container-apps-deployment skill, including its two-phase ACR access
-  pattern and postdeploy hook contract. Run any existing read-only Bicep or
-  azd validation commands that do not create resources. Return:
+  in the container-apps-deployment skill. Apply the AIMarket-specific
+  postprovision ACR pattern from PLAN-phase4-azure.md. Inspect the compiled ARM
+  resource graph, verify each retained AVM against the complete preview, and
+  confirm that the raw-resource fallback is used when AVM composition blocks
+  validation. Run existing read-only Bicep and azd validation commands. Return:
   1. PRE-DEPLOYMENT STATUS: READY or NOT READY
   2. A table with each requirement, PASS or FAIL, and file/line evidence
   3. Every blocking issue and the smallest exact fix
   Do not report READY while any required check is unresolved.
 ```
 
-**💡 What you're learning:** Small deployment details can fail in very different ways. A missing API service tag prevents azd from mapping the API, while a missing web tag prevents the hook from finding the storefront. An incomplete `.dockerignore` can overwhelm the build context, and the wrong nginx configuration can stop the container. The postdeploy hook solves a separate timing problem: Vite needs `VITE_API_URL` at build time, but the API FQDN isn't known until after provisioning. Notice that neither prompt listed these requirements. They live in `PLAN.md` and the `container-apps-deployment` skill, and the prompts just point at them. That's the same pattern your own team can use: when a deployment teaches you a new gotcha, record it in the spec or a skill, not in an ever-longer prompt.
+**💡 What you're learning:** Small deployment details can fail in different ways. A missing API service tag prevents azd from mapping the API, while a missing web tag prevents the hook from finding the storefront. An incomplete `.dockerignore` can overwhelm the build context, and the wrong nginx configuration can stop the container. AVM wrappers can also expand into a much larger ARM resource graph than their short Bicep calls suggest. Incremental preview identifies the module that causes a composition failure. The postprovision hook configures ACR access after managed identities and role assignments exist. The postdeploy hook solves a separate timing problem: Vite needs `VITE_API_URL` at build time, but the API FQDN is not known until after provisioning. Record new deployment knowledge in the specification or a skill, not in an ever-longer prompt.
 
 #### Step 2: Deploy
 
@@ -958,10 +1034,12 @@ java --version    # Eclipse Temurin JDK (need 25 LTS or later)
 
 **Fix:** Set GPT-5 reasoning effort to `minimal`, allow at least 2,000 completion/output tokens, and map an empty model response to HTTP 502 with code `AI_RESPONSE_ERROR`. Redeploy the API and retry a comparison prompt.
 
+Before you run the repair prompt, review [Shopping Assistant](./PLAN-phase3-ai.md#shopping-assistant) for the required `minimal` reasoning effort, output-token budget, catalog grounding, and empty-response error mapping. Compare those requirements with the current Foundry request and API error handling.
+
 ```text
 > The shopping assistant returns HTTP 500 after the typing indicator.
   Check the Foundry request against the Shopping Assistant requirements in
-  PLAN.md, including GPT-5 reasoning effort, completion/output token budget,
+  PLAN-phase3-ai.md, including GPT-5 reasoning effort, completion/output token budget,
   and empty-response error handling. Fix it and add a comparison-query
   regression test.
 ```
@@ -988,6 +1066,12 @@ az provider register --namespace Microsoft.Search
 az provider register --namespace Microsoft.CognitiveServices
 az provider register --namespace Microsoft.OperationalInsights
 ```
+
+### Cognitive Services reports unusual activity (`715-123420`)
+
+Do not assume that the subscription or AI Services account is restricted. First, run an isolated read-only preview for the AI Services account and model deployment. If that preview passes, the full ARM deployment graph is the problem.
+
+Inspect the compiled template for repeated Container App modules, large AVM pattern modules, unexpected preview API versions, and unrelated resource definitions. Apply [AVM Validation and Raw Fallback](./PLAN-phase4-azure.md#avm-validation-and-raw-fallback), then rerun the complete `azd provision --preview --no-prompt`. Do not continue to `azd up` until the complete preview passes.
 
 ### Orders or inventory changes disappear after a while
 
@@ -1088,7 +1172,11 @@ Explore the other journeys:
 
 ## Resources
 
-- [AIMarket Spec](./PLAN.md): The plan document used by GitHub Copilot to scaffold the app
+- [AIMarket Plan](./PLAN.md): Vision, shared decisions, phase map, and end-to-end acceptance criteria
+- [Phase 1 API Plan](./PLAN-phase1-api.md): API, data, and seed-data requirements
+- [Phase 2 Storefront Plan](./PLAN-phase2-storefront.md): React storefront requirements
+- [Phase 3 AI Plan](./PLAN-phase3-ai.md): Semantic search and shopping-assistant requirements
+- [Phase 4 Azure Plan](./PLAN-phase4-azure.md): Infrastructure and deployment requirements
 - [Azure AI Search Documentation](https://learn.microsoft.com/azure/search/)
 - [Microsoft Foundry](https://learn.microsoft.com/azure/ai-services/)
 - [Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/)
