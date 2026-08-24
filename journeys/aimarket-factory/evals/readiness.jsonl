@@ -1,0 +1,2 @@
+{"id":"ready","input":{"state":"factory:planned","actor":"maintainer","label":"factory:ready","acceptanceCommands":["npm test"]},"expected":{"allowed":true}}
+{"id":"unauthorized-ready","input":{"state":"factory:planned","actor":"agent","label":"factory:ready"},"expected":{"allowed":false}}

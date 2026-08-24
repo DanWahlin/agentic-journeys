@@ -1,0 +1,42 @@
+version: 1
+contract: aimarket-factory-required-checks
+rule: An LLM conclusion cannot substitute for any required deterministic check.
+checks:
+  - id: factory/policy
+    name: Factory policy, changed-path, stack, and workflow-security checks
+    required: true
+    appliesTo: [F0, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15]
+    covers: [changed-paths, workflow-security, stack-state]
+  - id: factory/contracts
+    name: Factory schema, task-graph, issue, PR, and evidence-contract checks
+    required: true
+    appliesTo: [F0, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, F13, F14, F15]
+    covers: [schema-contract, evidence-schema]
+  - id: product/deterministic
+    name: Formatting, build, unit, API, browser, and accessibility checks
+    required: true
+    appliesTo: [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F12, F13, F14]
+    covers: [format-build, unit, api-mutation, browser, accessibility]
+  - id: security/deterministic
+    name: Dependency, secret, and license checks
+    required: true
+    appliesTo: [F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F12, F13, F14]
+    covers: [dependency-vulnerability, secret-scan, license-policy]
+  - id: infra/preview
+    name: Bicep build and complete Azure preview
+    required: true
+    appliesTo: [F13, F14]
+    covers: [bicep-build, bicep-preview]
+    blockedAllowedWhen: Azure capability preflight is factually blocked
+  - id: factory/live-conformance
+    name: Live Search and Foundry conformance
+    required: true
+    appliesTo: [F15]
+    mergeGate: false
+    prereleaseGate: true
+  - id: factory/cleanup
+    name: Owned-resource cleanup proof
+    required: true
+    appliesTo: [F15]
+    mergeGate: false
+    prereleaseGate: true

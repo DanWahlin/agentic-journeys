@@ -1,0 +1,1 @@
+{"pullRequests":[{"id":"PR2","taskId":"F2","head":"factory/f2","base":"main","expectedBase":"main","headSha":"abc","expectedHeadSha":"abc","merged":false},{"id":"PR3","taskId":"F3","head":"factory/f3","base":"factory/f2","expectedBase":"factory/f2","parent":"PR2","merged":false}]}

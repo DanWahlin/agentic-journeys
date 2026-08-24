@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "title": "AIMarket Factory",
+  "fields": [
+    {"name": "Stable ID", "type": "text", "required": true},
+    {"name": "Dependencies", "type": "text", "required": true},
+    {"name": "Stack", "type": "singleSelect", "required": true, "options": ["Contract", "API", "Web", "Search", "Chat", "Preflight", "Infra", "Integration", "Release"]},
+    {"name": "Specialist", "type": "text", "required": true},
+    {"name": "Factory State", "type": "singleSelect", "required": true, "options": ["proposed", "needs-clarification", "planned", "ready", "running", "review", "blocked", "done", "cancelled"]},
+    {"name": "Risk", "type": "singleSelect", "required": true, "options": ["low", "medium", "high", "azure", "security"]},
+    {"name": "Pull Request", "type": "text", "required": false},
+    {"name": "Checks", "type": "singleSelect", "required": true, "options": ["pending", "passing", "failing", "blocked", "not-applicable"]},
+    {"name": "Deployment", "type": "singleSelect", "required": true, "options": ["not-started", "awaiting-approval", "running", "verified", "blocked", "cleaned"]},
+    {"name": "Evidence", "type": "text", "required": false},
+    {"name": "Expected Head SHA", "type": "text", "required": false}
+  ],
+  "views": [
+    {"name": "Factory DAG", "layout": "table", "groupBy": "Stack", "sortBy": ["Stable ID"]},
+    {"name": "Review Buffer", "layout": "board", "groupBy": "Factory State", "filter": "Factory State:review"},
+    {"name": "Blocked Work", "layout": "table", "filter": "Factory State:blocked"},
+    {"name": "Release Evidence", "layout": "table", "filter": "Stack:Release"}
+  ]
+}

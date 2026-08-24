@@ -1,0 +1,32 @@
+name: AIMarket Factory cleanup incident
+description: Record owned resource cleanup failure; deletion remains human-approved.
+title: "[cleanup] run "
+labels: ["factory:blocked", "risk:azure"]
+body:
+  - type: input
+    id: run-id
+    attributes: { label: Factory run ID, description: "Exact sanitized run ownership key." }
+    validations: { required: true }
+  - type: input
+    id: resource-group
+    attributes: { label: Owned resource group, description: "One predeclared RG; private issue only." }
+    validations: { required: true }
+  - type: textarea
+    id: inventory
+    attributes: { label: Predeclared ownership inventory and lifecycle exceptions }
+    validations: { required: true }
+  - type: textarea
+    id: evidence
+    attributes: { label: Failed cleanup command and sanitized evidence }
+    validations: { required: true }
+  - type: textarea
+    id: exact-action
+    attributes: { label: Exact proposed cleanup, description: "No wildcard, subscription-wide, or unrelated deletion." }
+    validations: { required: true }
+  - type: checkboxes
+    id: approval
+    attributes:
+      label: Protected cleanup
+      options:
+        - label: A human must verify ownership and approve the protected cleanup environment.
+          required: true

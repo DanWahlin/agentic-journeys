@@ -1,0 +1,181 @@
+version: 1
+contract: aimarket-factory-f0-f15
+source: ../PLAN.md
+stacks:
+  Contract: [F0, F1]
+  API: [F2, F3, F4]
+  Web: [F5, F6]
+  Search: [F7, F8]
+  Chat: [F9, F10]
+  Preflight: [F11]
+  Infra: [F12, F13]
+  Integration: [F14]
+  Release: [F15]
+tasks:
+  - id: F0
+    title: Freeze product contract and referenced headings
+    dependsOn: []
+    externalPrerequisite: approved-rfc
+    stack: Contract
+    area: contract
+    risk: medium
+    specialist: aimarket-spec-steward
+    mayFinishBlocked: false
+    automaticDispatch: false
+    expectedArtifacts: [PRODUCT.md, contract-heading-inventory]
+  - id: F1
+    title: Add schemas, fixtures, contract tests, and CI baseline
+    dependsOn: [F0]
+    stack: Contract
+    area: contract
+    risk: medium
+    specialist: aimarket-spec-steward
+    mayFinishBlocked: false
+    automaticDispatch: false
+    expectedArtifacts: [contract-schemas, canonical-fixtures, contract-tests]
+  - id: F2
+    title: API package baseline, models, and validation
+    dependsOn: [F1]
+    stack: API
+    area: api
+    risk: low
+    specialist: aimarket-api
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [api-package-baseline, api-models, validation-tests]
+  - id: F3
+    title: Repository interfaces, SQLite implementation, and inventory transactions
+    dependsOn: [F2]
+    stack: API
+    area: api
+    risk: medium
+    specialist: aimarket-api
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [repository-interfaces, sqlite-repositories, transaction-tests]
+  - id: F4
+    title: REST routes and API integration tests
+    dependsOn: [F3]
+    stack: API
+    area: api
+    risk: medium
+    specialist: aimarket-api
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [rest-routes, api-integration-tests]
+  - id: F5
+    title: Web package baseline, React shell, typed API client, and mocked catalog
+    dependsOn: [F1]
+    stack: Web
+    area: web
+    risk: low
+    specialist: aimarket-web
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [web-package-baseline, react-shell, typed-api-client, mocked-catalog]
+  - id: F6
+    title: Product, cart, order, and accessibility flows
+    dependsOn: [F4, F5]
+    stack: Web
+    area: web
+    risk: medium
+    specialist: aimarket-web
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [storefront-flows, accessibility-tests]
+  - id: F7
+    title: Local search and Azure AI Search adapter
+    dependsOn: [F4]
+    stack: Search
+    area: search
+    risk: medium
+    specialist: aimarket-search
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [local-search, azure-search-adapter, search-adapter-tests]
+  - id: F8
+    title: AI Search UI and semantic-search evals
+    dependsOn: [F6, F7]
+    stack: Search
+    area: search
+    risk: medium
+    specialist: aimarket-search
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [ai-search-ui, semantic-search-evals]
+  - id: F9
+    title: Catalog-grounded chat API and adversarial evals
+    dependsOn: [F4]
+    stack: Chat
+    area: chat
+    risk: security
+    specialist: aimarket-chat
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [chat-api, grounding-evals, adversarial-evals]
+  - id: F10
+    title: ChatWidget and multi-turn browser tests
+    dependsOn: [F6, F9]
+    stack: Chat
+    area: chat
+    risk: medium
+    specialist: aimarket-chat
+    mayFinishBlocked: false
+    automaticDispatch: true
+    expectedArtifacts: [chat-widget, multi-turn-browser-tests]
+  - id: F11
+    title: Azure capability, identity, budget, and blocked-outcome preflight
+    dependsOn: [F8, F10]
+    stack: Preflight
+    area: infra
+    risk: azure
+    specialist: aimarket-security-cost-reviewer
+    mayFinishBlocked: true
+    automaticDispatch: true
+    provisioningAllowed: false
+    expectedArtifacts: [capability-matrix, azure-preflight-report]
+  - id: F12
+    title: Containerization and deterministic local build proof
+    dependsOn: [F4, F6, F8, F10]
+    stack: Infra
+    area: infra
+    risk: medium
+    specialist: aimarket-infra
+    mayFinishBlocked: false
+    automaticDispatch: true
+    requiresControlApproval: true
+    expectedArtifacts: [containerfiles, deterministic-build-proof]
+  - id: F13
+    title: Bicep, RG-scoped identities, ACR hooks, policy, and ownership inventory
+    dependsOn: [F11, F12]
+    stack: Infra
+    area: infra
+    risk: azure
+    specialist: aimarket-infra
+    mayFinishBlocked: false
+    automaticDispatch: true
+    requiresControlApproval: true
+    expectedArtifacts: [bicep, deployment-hooks, identity-policy, ownership-schema]
+  - id: F14
+    title: Integration candidate and full local suite
+    dependsOn: [F8, F10, F13]
+    stack: Integration
+    area: integration
+    risk: high
+    specialist: aimarket-factory-coordinator
+    gatedWorkItem: true
+    automaticDispatch: false
+    mayFinishBlocked: false
+    expectedArtifacts: [integration-candidate, full-local-evidence]
+  - id: F15
+    title: Protected staging deployment, proof, teardown, prerelease, and retrospective
+    dependsOn: [F14]
+    externalPrerequisite: human-staging-approval
+    stack: Release
+    area: release
+    risk: azure
+    specialist: aimarket-security-cost-reviewer
+    gatedWorkItem: true
+    automaticDispatch: false
+    mayFinishBlocked: true
+    expectedArtifacts: [staging-evidence, cleanup-proof, prerelease, retrospective]

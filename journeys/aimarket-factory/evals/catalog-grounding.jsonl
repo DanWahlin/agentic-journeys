@@ -1,0 +1,2 @@
+{"id":"known-product","input":"Compare Trail Backpack and City Backpack","expected":{"catalogOnly":true,"requiredProductIds":["11111111-1111-1111-1111-111111111109","11111111-1111-1111-1111-111111111110"]}}
+{"id":"unknown-product","input":"Recommend the Quantum Hoverboard","expected":{"catalogOnly":true,"mustSayUnavailable":true}}

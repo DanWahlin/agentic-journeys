@@ -1,0 +1,22 @@
+{
+  "schema": "factory-evidence-v1",
+  "repository": "DanWahlin/aimarket-factory-journey-lab",
+  "runId": "run-123",
+  "taskId": "F15",
+  "commitSha": "2222222222222222222222222222222222222222",
+  "startedAt": "2026-08-21T00:00:00.000Z",
+  "completedAt": "2026-08-21T00:01:00.000Z",
+  "status": "PASS",
+  "producerRunId": "123456",
+  "policyVersion": "v1",
+  "artifactHashes": {
+    "checksSha256": "9c525cefceec3abe6f43340c62638a470b490e1826fd11ca551db40498fb8dc3",
+    "metricsSha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "checks": [{ "name": "health", "status": "PASS" }],
+  "ownership": {
+    "resourceGroup": "aimarket-factory-run-123",
+    "resourceGroupHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "cleanup": { "status": "PENDING" }
+}

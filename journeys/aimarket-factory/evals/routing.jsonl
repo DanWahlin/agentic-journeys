@@ -1,0 +1,2 @@
+{"id":"route-api","input":{"labels":["factory:ready","area:api"],"dependenciesReady":true},"expected":{"specialist":"aimarket-api","dispatch":true}}
+{"id":"route-blocked","input":{"labels":["area:web"],"dependenciesReady":true},"expected":{"dispatch":false,"reason":"missing factory:ready"}}

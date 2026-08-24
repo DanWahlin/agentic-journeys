@@ -1,0 +1,93 @@
+name: AIMarket Factory CI
+
+"on":
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aimarket-factory-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  factory-policy:
+    name: factory/policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - run: node .github/skills/aimarket-factory/scripts/validate-factory-config.mjs
+      - run: node scripts/verify-aimarket-factory-repo.mjs
+      - name: Reject unauthorized reserved paths
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          FACTORY_CONTROL_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'factory-control:approved') }}
+        run: |
+          git diff --name-only "$BASE_SHA" HEAD > /tmp/changed-paths
+          if grep -Eq '^(\.github/(workflows|agents|skills)/|factory/|scripts/(setup|deploy|cleanup|release)|scripts/verify-aimarket-factory-live\.mjs$)' /tmp/changed-paths && [ "$FACTORY_CONTROL_APPROVED" != "true" ]; then
+            echo 'Reserved factory-control path changed without maintainer label' >&2; exit 1
+          fi
+  contracts:
+    name: factory/contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { persist-credentials: false }
+      - run: node .github/skills/aimarket-factory/scripts/validate-task-graph.mjs
+      - run: node scripts/verify-aimarket-factory-local.mjs
+  product:
+    name: product/deterministic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { persist-credentials: false }
+      - name: Format, build, unit, contract, API, browser, and accessibility tests
+        shell: bash
+        run: |
+          if [ ! -f package.json ]; then
+            echo 'Product scaffold is not present yet; product checks are not applicable during factory bootstrap.'
+            exit 0
+          fi
+          npm ci --ignore-scripts
+          npm run format:check
+          npm run build
+          npm test
+          npm run test:contracts
+          npm run test:api
+          npm run test:e2e
+          npm run test:a11y
+  security:
+    name: security/deterministic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: Dependency and license policy
+        run: |
+          if [ ! -f package.json ]; then
+            echo 'Product scaffold is not present yet; dependency checks are not applicable during factory bootstrap.'
+            exit 0
+          fi
+          npm audit --audit-level=high
+          npm run check:licenses
+      - name: Secret-pattern fallback scan
+        run: |
+          if git grep -nEI '(BEGIN (RSA|OPENSSH) PRIVATE KEY|AZURE_CLIENT_SECRET[[:space:]]*=|gh[pousr]_[A-Za-z0-9]{20,})' -- ':!tests/fixtures/**'; then exit 1; fi
+  infrastructure:
+    name: infra/preview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { persist-credentials: false }
+      - name: Build Bicep when infrastructure exists
+        run: |
+          if [ ! -f infra/main.bicep ]; then
+            echo 'Infrastructure is not present yet; Bicep checks are not applicable during factory bootstrap.'
+            exit 0
+          fi
+          az bicep build --file infra/main.bicep
+      - run: node scripts/verify-aimarket-factory-local.mjs

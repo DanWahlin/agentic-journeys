@@ -1,0 +1,105 @@
+{
+  "version": 1,
+  "repository": {
+    "visibility": "private",
+    "deleteBranchOnMerge": true,
+    "allowAutoMerge": false,
+    "allowMergeCommit": false,
+    "allowRebaseMerge": true,
+    "allowSquashMerge": true,
+    "hasIssues": true,
+    "hasDiscussions": true,
+    "hasProjects": true,
+    "vulnerabilityAlerts": true
+  },
+  "preflight": {
+    "requireExactOwnerAndRepository": true,
+    "requirePrivateVisibility": true,
+    "requireKnownEmptyOrManifestBaseline": true,
+    "stopOnRepositoryCollision": true,
+    "neverAdoptUnexpectedState": true,
+    "requiredCapabilities": [
+      "private-discussions",
+      "copilot-cloud-agent",
+      "projects-v2-authentication",
+      "sequential-dependency-completion",
+      "current-default-branch-targeting",
+      "mandatory-staging-reviewer",
+      "azure-oidc-readiness"
+    ],
+    "optionalCapabilities": [
+      "native-stacked-pr-visualization",
+      "native-secret-scanning",
+      "native-dependency-review"
+    ],
+    "unsupportedRequiredCapability": "BLOCKED"
+  },
+  "defaultBranchRules": {
+    "branch": "main",
+    "requirePullRequest": true,
+    "requiredApprovingReviews": 1,
+    "dismissStaleReviews": true,
+    "requireCodeOwnerReview": false,
+    "requireConversationResolution": true,
+    "requireStatusChecks": true,
+    "strictStatusChecks": true,
+    "requiredChecksSource": "required-checks.yml",
+    "blockForcePush": true,
+    "blockDeletion": true,
+    "allowBypass": false,
+    "humanMergeOnly": true
+  },
+  "environments": [
+    {
+      "name": "aimarket-factory-staging",
+      "requiredHumanReviewer": true,
+      "deploymentBranches": ["main"],
+      "allowPullRequests": false
+    },
+    {
+      "name": "aimarket-factory-bootstrap",
+      "requiredHumanReviewer": true,
+      "deploymentBranches": ["main"],
+      "allowPullRequests": false
+    },
+    {
+      "name": "aimarket-factory-cleanup",
+      "requiredHumanReviewer": true,
+      "deploymentBranches": ["main"],
+      "allowPullRequests": false
+    },
+    {
+      "name": "aimarket-factory-release",
+      "requiredHumanReviewer": true,
+      "deploymentBranches": ["main"],
+      "allowPullRequests": false
+    }
+  ],
+  "variables": [
+    "AIMARKET_FACTORY_ENABLED",
+    "AIMARKET_FACTORY_AZURE_ENABLED",
+    "AZURE_CLIENT_ID",
+    "AZURE_READONLY_CLIENT_ID",
+    "AZURE_PURGE_CLIENT_ID",
+    "AZURE_TENANT_ID",
+    "AZURE_SUBSCRIPTION_ID",
+    "AIMARKET_FACTORY_ALLOWED_LOCATION",
+    "AIMARKET_FACTORY_POLICY_VERSION"
+  ],
+  "secretValues": {
+    "persistInRepositoryFiles": false,
+    "printInDryRunOrLogs": false
+  },
+  "securityFallbacks": {
+    "secretScanning": "checked-in-secret-pattern-scan",
+    "dependencyVulnerability": "npm-audit-high",
+    "missingRequiredControl": "BLOCKED"
+  },
+  "installation": {
+    "idempotent": true,
+    "deleteUnknownArtifacts": false,
+    "readBackEveryMutation": true,
+    "writeSanitizedManifest": true,
+    "compileAgenticWorkflowsOnlyInTargetRepository": true
+  }
+}

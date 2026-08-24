@@ -1,0 +1,29 @@
+name: AIMarket Factory defect
+description: Report a reproducible product or factory defect without authorizing work.
+title: "[defect] "
+labels: ["factory:proposed"]
+body:
+  - type: input
+    id: parent
+    attributes: { label: Parent factory issue, placeholder: "#1" }
+    validations: { required: true }
+  - type: textarea
+    id: observed
+    attributes: { label: Observed behavior, description: "Sanitized facts and immutable run/check IDs only." }
+    validations: { required: true }
+  - type: textarea
+    id: expected
+    attributes: { label: Expected contract, description: "Cite exact PRODUCT/PLAN heading." }
+    validations: { required: true }
+  - type: textarea
+    id: reproduction
+    attributes: { label: Reproduction and acceptance commands }
+    validations: { required: true }
+  - type: textarea
+    id: scope
+    attributes: { label: Proposed owned paths and risk, description: "No broad or reserved paths." }
+    validations: { required: true }
+  - type: textarea
+    id: rollback
+    attributes: { label: Rollback and prohibited actions }
+    validations: { required: true }

@@ -132,22 +132,26 @@ Each journey is self-contained — jump into whichever one fits what you want to
 | [Apache Superset](./journeys/superset/README.md) | Deploy a BI platform to AKS: init containers, ConfigMaps, Kubernetes debugging. | ~$200–215/month |
 | [AIMarket](./journeys/aimarket/README.md) | Build a full-stack marketplace from a spec: API + React + AI Search + Foundry chat. | ~$100–115/month |
 | [SmartTodo](./journeys/smart-todo/README.md) | Build an AI todo app: Azure Functions, Azure SQL with managed identity, SwiftUI client. | ~$10–30/month |
+| [AIMarket Factory](./journeys/aimarket-factory/README.md) | Turn an approved product brief into bounded Issues, dependent PR stacks, checks, review, staging, and cleanup. | Same ~$100–115/month app stack; the live factory run stops at a $20 budget ceiling |
 
-> **Tip:** Complete a journey and run `azd down --force --purge` the same day. Cost estimates are “if left on for a month,” not what you pay for a single lab session.
+> **Tip:** Complete each journey's cleanup procedure the same day. Most journeys use `azd down --force --purge`; AIMarket Factory uses its protected, ownership-bound cleanup workflow. Cost estimates are “if left on for a month,” not what you pay for a single lab session.
 
 ## What each journey teaches
 
-| Pipeline slice | WeatherView | Grafana | n8n | Superset | AIMarket | SmartTodo |
-|----------------|:-----------:|:-------:|:---:|:--------:|:--------:|:---------:|
-| Idea / product intent | ✅ | | | | ✅ | ✅ |
-| PLAN/spec → agentic code | ✅ | | | | ✅ | ✅ |
-| Agent-generated Bicep + `azd` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Azure Static Web Apps | ✅ | | | | | |
-| Container Apps | | ✅ | ✅ | | ✅ | |
-| AKS | | | | ✅ | | |
-| Azure Functions | | | | | | ✅ |
-| Microsoft Foundry / LLMs | | | | | ✅ | ✅ |
-| Azure AI Search | | | | | ✅ | |
+| Pipeline slice | WeatherView | Grafana | n8n | Superset | AIMarket | SmartTodo | AIMarket Factory |
+|----------------|:-----------:|:-------:|:---:|:--------:|:--------:|:---------:|:----------------:|
+| Idea / product intent | ✅ | | | | ✅ | ✅ | ✅ |
+| PLAN/spec → agentic code | ✅ | | | | ✅ | ✅ | ✅ |
+| Issues and Project task graph | | | | | | | ✅ |
+| Dependent PR stacks | | | | | | | ✅ |
+| Independent agent review | | | | | | | ✅ |
+| Agent-generated Bicep + `azd` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Azure Static Web Apps | ✅ | | | | | | |
+| Container Apps | | ✅ | ✅ | | ✅ | | ✅ |
+| AKS | | | | ✅ | | | |
+| Azure Functions | | | | | | ✅ | |
+| Microsoft Foundry / LLMs | | | | | ✅ | ✅ | ✅ |
+| Azure AI Search | | | | | ✅ | | ✅ |
 
 ---
 

@@ -39,11 +39,6 @@
         }
       },
       "action_description": "Upload a build artifact that can be used by subsequent workflow steps"
-    },
-    "github/gh-aw-actions/setup@v0.64.4": {
-      "repo": "github/gh-aw-actions/setup",
-      "version": "v0.64.4",
-      "sha": "7cae8cd356c7905aeda72eb08e1d0b4501310c23"
     }
   }
 }

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "labels": [
+    {"name": "factory:proposed", "color": "D4C5F9", "description": "Factory work proposed; not authorized"},
+    {"name": "factory:needs-clarification", "color": "FBCA04", "description": "Factory work needs human clarification"},
+    {"name": "factory:planned", "color": "BFDADC", "description": "Factory work has an accepted plan"},
+    {"name": "factory:ready", "color": "0E8A16", "description": "Approved work is dependency-ready for governed dispatch"},
+    {"name": "factory:running", "color": "1D76DB", "description": "One bounded worker session is active"},
+    {"name": "factory:review", "color": "5319E7", "description": "Draft PR awaits checks and independent review"},
+    {"name": "factory:blocked", "color": "D93F0B", "description": "Work stopped on a factual blocker"},
+    {"name": "factory:done", "color": "006B75", "description": "Human merged verified work or completed gated item"},
+    {"name": "factory:cancelled", "color": "6E7781", "description": "Maintainer cancelled the work order"},
+    {"name": "factory:owned", "color": "0052CC", "description": "Artifact belongs to the AIMarket factory"},
+    {"name": "area:contract", "color": "C2E0C6", "description": "Product or contract work"},
+    {"name": "area:api", "color": "C5DEF5", "description": "API and data work"},
+    {"name": "area:web", "color": "F9D0C4", "description": "React storefront work"},
+    {"name": "area:search", "color": "BFD4F2", "description": "Search work"},
+    {"name": "area:chat", "color": "D4C5F9", "description": "Shopping assistant work"},
+    {"name": "area:test", "color": "EDEDED", "description": "Verification work"},
+    {"name": "area:infra", "color": "F9D0C4", "description": "Infrastructure work"},
+    {"name": "area:integration", "color": "BFDADC", "description": "Integration candidate work"},
+    {"name": "area:release", "color": "F7C6C7", "description": "Staging, cleanup, and prerelease work"},
+    {"name": "risk:low", "color": "C2E0C6", "description": "Low-risk bounded change"},
+    {"name": "risk:medium", "color": "FBCA04", "description": "Moderate implementation risk"},
+    {"name": "risk:high", "color": "B60205", "description": "High-risk integration change"},
+    {"name": "risk:azure", "color": "0078D4", "description": "Azure mutation, cost, or cleanup risk"},
+    {"name": "risk:security", "color": "D93F0B", "description": "Security or trust-boundary risk"},
+    {"name": "factory:cleanup-incident", "color": "B60205", "description": "Owned cleanup requires human attention"}
+  ]
+}

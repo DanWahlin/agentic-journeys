@@ -1,0 +1,67 @@
+name: AIMarket Factory cancellation recovery
+
+"on":
+  workflow_run:
+    workflows: ["AIMarket Factory protected staging"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  open-protected-cleanup-incident:
+    if: github.event.workflow_run.conclusion != 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read and validate pre-deployment cleanup checkpoint
+        id: checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.workflow_run.id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          status=missing
+          mkdir -p recovery
+          if gh run download "$RUN" --name factory-cleanup-context --dir recovery; then
+            if [ "$HEAD_BRANCH" = "$DEFAULT_BRANCH" ] && jq -e \
+              --arg repository "$REPOSITORY" \
+              --arg producerRunId "$RUN" \
+              --arg approvedSha "$HEAD_SHA" \
+              '.schema == "factory-cleanup-context-v1" and
+               .repository == $repository and
+               .producerRunId == $producerRunId and
+               .approvedSha == $approvedSha and
+               (.runId | test("^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$")) and
+               .resourceGroup == ("aimarket-factory-" + .runId)' \
+              recovery/cleanup-context.json >/dev/null; then
+              status=valid
+            else
+              status=invalid
+            fi
+          fi
+          printf 'status=%s\n' "$status" >> "$GITHUB_OUTPUT"
+      - name: Open one blocked recovery incident
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.event.workflow_run.id }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CHECKPOINT_STATUS: ${{ steps.checkpoint.outputs.status }}
+        run: |
+          title="[cleanup] staging run $RUN requires protected recovery"
+          if gh issue list --state all --search "$title in:title" --json title --jq '.[].title' | grep -Fxq "$title"; then exit 0; fi
+          if [ "$CHECKPOINT_STATUS" = valid ]; then
+            # shellcheck disable=SC2016
+            body=$(printf 'Staging run `%s` completed with `%s` after passing the pre-deployment cleanup checkpoint. Retrieve the private `factory-cleanup-context` artifact from that run, verify its immutable inputs, and dispatch the protected cleanup workflow. Do not copy its resource identifiers into this Issue. Do not broaden the deletion scope. A prerelease remains blocked.' "$RUN" "$CONCLUSION")
+          elif [ "$CHECKPOINT_STATUS" = missing ]; then
+            # shellcheck disable=SC2016
+            body=$(printf 'Staging run `%s` completed with `%s` before a cleanup checkpoint artifact could be read. Deployment must not have started before that checkpoint. Verify the run logs; keep the prerelease blocked.' "$RUN" "$CONCLUSION")
+          else
+            # shellcheck disable=SC2016
+            body=$(printf 'Staging run `%s` completed with `%s`, but its cleanup checkpoint failed immutable repository/run/SHA validation. Treat the artifact as untrusted and keep the prerelease blocked.' "$RUN" "$CONCLUSION")
+          fi
+          gh issue create --title "$title" --body "$body"

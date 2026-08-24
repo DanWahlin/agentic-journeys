@@ -1,0 +1,61 @@
+name: AIMarket Factory prerelease
+"on":
+  workflow_dispatch:
+    inputs:
+      approved_sha: { description: Tested and merged SHA, required: true, type: string }
+      run_id: { description: Factory run ID with verified cleanup evidence, required: true, type: string }
+      staging_run_id: { description: Successful protected staging workflow run ID, required: true, type: string }
+      cleanup_run_id: { description: "Staging run ID with measured cleanup, or successful protected recovery run ID", required: true, type: string }
+permissions:
+  contents: write
+  actions: read
+jobs:
+  prerelease:
+    if: vars.AIMARKET_FACTORY_ENABLED == 'true'
+    environment: aimarket-factory-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require workflow dispatch from the default branch
+        run: test "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}"
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { ref: '${{ inputs.approved_sha }}', persist-credentials: false }
+      - name: Verify bound staging and cleanup evidence at immutable default-branch head
+        env: { GH_TOKEN: '${{ github.token }}', STAGING_RUN: '${{ inputs.staging_run_id }}', CLEANUP_RUN: '${{ inputs.cleanup_run_id }}', SHA: '${{ inputs.approved_sha }}', DEFAULT_BRANCH: '${{ github.event.repository.default_branch }}', RUN_ID: '${{ inputs.run_id }}', POLICY_VERSION: '${{ vars.AIMARKET_FACTORY_POLICY_VERSION }}', REPOSITORY: '${{ github.repository }}' }
+        run: |
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$STAGING_RUN" --jq .conclusion)" = success
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$STAGING_RUN" --jq .path)" = ".github/workflows/aimarket-factory-staging.yml"
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$STAGING_RUN" --jq .event)" = "workflow_dispatch"
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$STAGING_RUN" --jq .head_branch)" = "$DEFAULT_BRANCH"
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$STAGING_RUN" --jq .head_sha)" = "$SHA"
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$CLEANUP_RUN" --jq .conclusion)" = success
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$CLEANUP_RUN" --jq .head_branch)" = "$DEFAULT_BRANCH"
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$CLEANUP_RUN" --jq .head_sha)" = "$SHA"
+          cleanup_path=$(gh api "repos/$REPOSITORY/actions/runs/$CLEANUP_RUN" --jq .path)
+          if [ "$CLEANUP_RUN" = "$STAGING_RUN" ]; then
+            test "$cleanup_path" = ".github/workflows/aimarket-factory-staging.yml"
+          else
+            test "$cleanup_path" = ".github/workflows/aimarket-factory-cleanup.yml"
+          fi
+          test "$(gh api "repos/$REPOSITORY/actions/runs/$CLEANUP_RUN" --jq .event)" = "workflow_dispatch"
+          test "$(gh api "repos/$REPOSITORY/commits/$DEFAULT_BRANCH" --jq .sha)" = "$SHA"
+          gh run download "$STAGING_RUN" --name "factory-staging-evidence-$RUN_ID" --dir staging-proof
+          node .github/skills/aimarket-factory/scripts/verify-factory-evidence.mjs staging-proof/evidence.json "${{ github.repository }}" "$RUN_ID" "$SHA" F15 "$STAGING_RUN" PASS "$POLICY_VERSION"
+          gh run download "$CLEANUP_RUN" --name "factory-cleanup-evidence-${{ inputs.run_id }}" --dir cleanup-proof
+          node .github/skills/aimarket-factory/scripts/verify-cleanup.mjs cleanup-proof/cleanup-evidence.json "${{ github.repository }}" "$RUN_ID" "$SHA" "$CLEANUP_RUN" "$POLICY_VERSION" cleanup-proof
+      - name: Package the validated private evidence bundle
+        env: { SHA: '${{ inputs.approved_sha }}', RUN_ID: '${{ inputs.run_id }}', STAGING_RUN: '${{ inputs.staging_run_id }}', CLEANUP_RUN: '${{ inputs.cleanup_run_id }}' }
+        run: |
+          tar -czf "factory-evidence-$RUN_ID.tgz" staging-proof cleanup-proof
+          cat > retrospective.md <<EOF
+          # AIMarket Factory retrospective
+
+          - Approved SHA: \`$SHA\`
+          - Staging producer run: \`$STAGING_RUN\`
+          - Cleanup producer run: \`$CLEANUP_RUN\`
+          - Evidence bundle: \`factory-evidence-$RUN_ID.tgz\`
+
+          Complete the remaining measured duration, first-pass CI, accepted/attempted PRs, human corrections, review wait, Actions minutes, Copilot requests, Azure estimate, prohibited attempts, and cleanup incidents from the validated private evidence. Do not invent missing metrics.
+          EOF
+      - name: Create human-approved prerelease with evidence
+        env: { GH_TOKEN: '${{ github.token }}', SHA: '${{ inputs.approved_sha }}', RUN_ID: '${{ inputs.run_id }}' }
+        run: gh release create "factory-$RUN_ID" "factory-evidence-$RUN_ID.tgz" retrospective.md --target "$SHA" --prerelease --notes "AIMarket Factory candidate $SHA. Protected cleanup run ${{ inputs.cleanup_run_id }} succeeded. The attached private evidence and retrospective draft must be reviewed before promotion. Production deployment is forbidden."

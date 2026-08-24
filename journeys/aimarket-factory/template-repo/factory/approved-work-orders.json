@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "repository": "DanWahlin/aimarket-factory-journey-lab",
+  "parent": {
+    "issue": 4,
+    "title": "[AF-20260823-full] Complete AIMarket Factory F0-F15 proof",
+    "bodySha256": "75908c00aea8b4af16a965d1671fa5b1a3e09c28ccc3e1a94173498240278c2e"
+  },
+  "approvedTasks": [
+    {
+      "id": "F0",
+      "issue": 5,
+      "title": "[F0] Freeze product contract and referenced headings",
+      "bodySha256": "7634aed0471522c823001abd807349e9a550f2a498f4dac11bcb39bd3b494d65",
+      "reviewRunId": "32620838136",
+      "reviewPullRequest": 25,
+      "reviewRepository": "DanWahlin/aimarket-factory-journey-lab",
+      "reviewHeadSha": "3e70516f2375e3e811a09e5f8f44c24a51d2308b"
+    },
+    {
+      "id": "F1",
+      "issue": 6,
+      "title": "[F1] Add schemas, fixtures, contract tests, and CI baseline",
+      "bodySha256": "ce3fa7be9169874fe7090bff416fd9cb1d2b27d87146452cde9090b056f943f8",
+      "reviewRunId": "32699727204",
+      "reviewPullRequest": 30,
+      "reviewRepository": "DanWahlin/aimarket-factory-journey-lab",
+      "reviewHeadSha": "c47fb090e10af15eb89bf53e7ae47ec15704906b"
+    },
+    {
+      "id": "F2",
+      "issue": 7,
+      "title": "[F2] Add API package baseline, models, and validation",
+      "bodySha256": "d46ef18b601b149844e95c2f144c4a29d55ff0b3788ed2b78a0d0dbe1c373001"
+    },
+    {
+      "id": "F3",
+      "issue": 8,
+      "title": "[F3] Implement repository interfaces, SQLite, and atomic inventory transactions",
+      "bodySha256": "d9a6905dd1ca7be65303b4301b4adfe582286f66af5da247fb6d619db1f4f225"
+    },
+    {
+      "id": "F4",
+      "issue": 9,
+      "title": "[F4] Implement REST routes and API integration tests",
+      "bodySha256": "8e075dd1765c30909c7ca052f9237d51201a41dd81671a91be8db679494e7a31"
+    },
+    {
+      "id": "F5",
+      "issue": 10,
+      "title": "[F5] Add Web package baseline, React shell, typed API client, and mocked catalog",
+      "bodySha256": "774f0c52336d7e4aeb846e60f9314072491ca60186d6870f71951c1570ef288e"
+    },
+    {
+      "id": "F6",
+      "issue": 11,
+      "title": "[F6] Implement product, cart, order, and accessibility flows",
+      "bodySha256": "241d5db4cb6dc6bab81c34d098cbd2502780b9ef86566efe5a6571567ec7e57b"
+    },
+    {
+      "id": "F7",
+      "issue": 12,
+      "title": "[F7] Implement local search and Azure AI Search adapter",
+      "bodySha256": "9a64ed3933fe805ab30b1872855ec8cb74dcf9df11251e8f222b56f163333d54"
+    },
+    {
+      "id": "F8",
+      "issue": 13,
+      "title": "[F8] Implement AI Search UI and semantic-search evals",
+      "bodySha256": "3c61d577ae30144a3544178c3b7a3fc6553f8571b01fe845d065d0182ecd3636"
+    },
+    {
+      "id": "F9",
+      "issue": 14,
+      "title": "[F9] Implement catalog-grounded chat API and adversarial evals",
+      "bodySha256": "a5123685dabcbe4e555c00d9952a40761cb15f60ad67d06f00bf0353472def09"
+    },
+    {
+      "id": "F10",
+      "issue": 15,
+      "title": "[F10] Implement ChatWidget and multi-turn browser tests",
+      "bodySha256": "c4bf172dffb87f542672c88d77870c5dd1a9f79e78296436e63516c2f3c3cfd5"
+    },
+    {
+      "id": "F11",
+      "issue": 16,
+      "title": "[F11] Produce Azure capability, identity, budget, and blocked-outcome preflight",
+      "bodySha256": "697627ad176ca194477ae4842656315a191a7ba6a4e8be35b8d36f464022424c"
+    },
+    {
+      "id": "F12",
+      "issue": 17,
+      "title": "[F12] Add containerization and deterministic local build proof",
+      "bodySha256": "8ee36c57cd1524791934c10765b1131fb83408b09218efec5351497d3ef88c0c"
+    },
+    {
+      "id": "F13",
+      "issue": 18,
+      "title": "[F13] Add Bicep, RG-scoped identity hooks, policy, and ownership inventory",
+      "bodySha256": "f2a2c8d291bacc0dcaf1d80d5c1e697beba4a32ca548c3e9c4eaea84210776e0"
+    },
+    {
+      "id": "F14",
+      "issue": 19,
+      "title": "[F14] Create integration candidate and run the complete local suite",
+      "bodySha256": "a3348f8ab0c6a492fdbd5c307d18af37845948ce10826bb59e5eda9cf0ad6b30"
+    },
+    {
+      "id": "F15",
+      "issue": 20,
+      "title": "[F15] Run protected staging deployment, live proof, teardown, prerelease, and retrospective",
+      "bodySha256": "49d1fb9c9e63ffb7db218ccb6f4673a34fdff8430496173ed6e338bd17f66cdc"
+    }
+  ],
+  "approval": "Maintainer approval is the human merge of the control-plane PR containing this immutable record."
+}
