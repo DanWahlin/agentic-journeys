@@ -21,6 +21,16 @@ Require Azure CLI, Azure Developer CLI 1.28.0 or later, and Node.js LTS or later
 
 This skill provides Grafana-specific configuration only. Infrastructure (Bicep, azure.yaml) should be generated fresh each time by the official `azure-prepare` → `azure-validate` → `azure-deploy` pipeline. Do NOT rely on pre-existing infra code.
 
+### Validate the pinned AVM interface
+
+Check parameters, outputs, and defaults against the exact version in each `br/public:avm/...:<version>` reference before generating module calls. The upstream repository's `main` branch may describe a newer interface than the published version. For example, the Grafana run hit `BCP037` because workspace module `0.9.1` didn't accept the `features` parameter shown in newer source. Use the pinned version's supported configuration rather than assuming the latest source applies. Compile Bicep and run `azd provision --preview --no-prompt` before deployment.
+
+### Defer Log Analytics lookups until its module completes
+
+When a monitoring module creates Log Analytics, put the Container Apps environment in a separate module with an explicit dependency on the monitoring module. Pass the workspace name to that later module, and resolve the existing workspace's `customerId` and `listKeys()` inside it.
+
+Don't resolve those values in the parent deployment and pass them as module parameters. A constant-name workspace lookup can be evaluated before the monitoring module finishes, causing `ResourceNotFound` on a fresh deployment even when preview succeeds. The verified pattern is: monitoring module completes, environment module resolves workspace settings and creates the environment, then the Container App uses the environment module's resource-ID output.
+
 ## Critical: Subscription Context
 
 **ALWAYS set AZURE_SUBSCRIPTION_ID explicitly before running `azd up`.** Read it with `az account show --query id -o tsv`, then pass the returned value to `azd env set AZURE_SUBSCRIPTION_ID <subscription-id>`.
@@ -38,7 +48,7 @@ graph TB
     subgraph RG["Azure Resource Group"]
         LA["Log Analytics Workspace"]
         subgraph CAE["Container Apps Environment"]
-            GF["Grafana Container App<br/>Port 3000 · SQLite (default)<br/>Scale 0-3 replicas"]
+            GF["Grafana Container App<br/>Port 3000 · SQLite (default)<br/>Scale 0-1 replicas"]
         end
     end
 
@@ -114,11 +124,15 @@ node .github/scripts/verify-grafana.mjs
 
 The verifier reads `GRAFANA_URL` through `azd`, requires HTTP 200 from `/api/health`, asserts `database: "ok"`, and prints the deployment URL. Verify authenticated browser login separately with the deployed admin credentials. Retrieve a generated password only in a private terminal, and never print or paste it into the agent session or shared logs.
 
+For SQLite, also inspect the deployed Container App's `properties.template.scale.maxReplicas` through Azure CLI and require it to equal `1`. The HTTP verifier doesn't check scaling configuration.
+
 ## Scaling
 
 - **Min replicas**: 0 (scale to zero when idle)
-- **Max replicas**: 3
+- **Max replicas**: 1 (required for SQLite)
 - **Scaling rule**: HTTP concurrent requests (10 per replica)
+
+Generate `maxReplicas: 1` whenever Grafana uses SQLite, including when SQLite is persisted on Azure Files. Separate container-local databases cause inconsistent dashboards, users, and sessions across replicas. Keep this cap when temporarily setting `minReplicas: 1` for verification. Multiple Grafana replicas require a shared PostgreSQL or MySQL database; don't add one to the default SQLite lab.
 
 ## Storage Considerations
 

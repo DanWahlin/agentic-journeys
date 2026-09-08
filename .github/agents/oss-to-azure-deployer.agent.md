@@ -30,7 +30,7 @@ Read the app-specific skill FIRST to understand requirements before generating a
 | App | Skill | Key Requirements |
 |-----|-------|-----------------|
 | n8n | `n8n-azure` | Port 5678, PostgreSQL required, 60s+ startup probe, WEBHOOK_URL via post-provision hook, SSL_REJECT_UNAUTHORIZED=false |
-| Grafana | `grafana-azure` | Port 3000, SQLite default (no DB needed), /api/health probe, GF_* env vars |
+| Grafana | `grafana-azure` | Port 3000, SQLite default (no DB needed), maxReplicas: 1 for SQLite, /api/health probe, GF_* env vars |
 | Superset | `superset-azure` | AKS (not Container Apps), PostgreSQL required, psycopg2 custom Docker image, K8s manifests, hook-generated Superset secrets on clean environments |
 
 ### Step 1b: Load Container Apps Deployment Skill
