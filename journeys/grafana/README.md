@@ -52,6 +52,7 @@ The deployment is complete when:
 
 - [ ] `<grafana-url>/api/health` returns HTTP 200 with `"database":"ok"`.
 - [ ] The browser login succeeds with the deployed admin credentials.
+- [ ] The SQLite deployment has `maxReplicas: 1`.
 
 The journey is complete after the [Cleanup](#cleanup) procedure removes the Azure resources.
 
@@ -64,7 +65,7 @@ graph TB
     subgraph RG["Azure Resource Group"]
         LA["Log Analytics Workspace"]
         subgraph CAE["Container Apps Environment"]
-            GF["Grafana Container App<br/>Port 3000 · SQLite (default)<br/>Scale 0-3 replicas"]
+            GF["Grafana Container App<br/>Port 3000 · SQLite (default)<br/>Scale 0-1 replicas"]
         end
     end
 
@@ -170,6 +171,7 @@ Give the agent one prompt that covers the location, secrets, and issue handling:
 ```
 > Deploy Grafana to Azure using Bicep and azd. Set the location to westus,
   generate a secure admin password, and use /api/health for probes.
+  Use SQLite with minReplicas: 0 and maxReplicas: 1.
   If a deployment step fails, inspect the relevant logs, make the smallest
   safe correction, rerun the failed step, and record the problem and
   resolution in issues.md. Do not print secrets.
@@ -194,7 +196,7 @@ A useful answer should explain that SQLite is suitable for development and testi
 
 ### Step 3: Verify
 
-Ask the agent to check the health endpoint and Container App logs:
+Ask the agent to check the health endpoint, Container App logs, and deployed `maxReplicas` setting:
 
 ```text
 > Verify the Grafana deployment. Report each acceptance criterion as pass or fail.
@@ -244,8 +246,10 @@ The agent will check if it's a cold start issue (scale-from-zero takes 30-60s) o
 | CPU | 0.5 cores |
 | Memory | 1 GiB |
 | Min Replicas | 0 (scale-to-zero) |
-| Max Replicas | 3 |
+| Max Replicas | 1 (required for SQLite) |
 | Scale Rule | HTTP requests (10 concurrent per replica) |
+
+Keep `maxReplicas: 1` while using SQLite. Each replica would otherwise have its own database, so dashboards, users, and sessions could differ between requests even without a restart. Scale-to-zero remains available with `minReplicas: 0`.
 
 ### Health Probes
 
@@ -282,7 +286,7 @@ GF_DATABASE_PASSWORD: <secret>
 GF_DATABASE_SSL_MODE: require
 ```
 
-**Alternative:** Mount Azure Files to `/var/lib/grafana` for persistent SQLite.
+**Alternative:** Mount Azure Files to `/var/lib/grafana` for persistent SQLite, keeping `maxReplicas: 1`. Persistence doesn't make SQLite suitable for multiple Grafana replicas; those require a shared PostgreSQL or MySQL database.
 
 </details>
 
