@@ -159,7 +159,7 @@ Priority order:
 
 Generated `azd` lifecycle hooks must be CommonJS `.js` or `.ts` files referenced directly from `azure.yaml`; `azd` 1.28.0 rejects `.mjs` hook paths. Do not generate `.sh` hooks, `shell: sh`, `chmod`, shell traps, command substitution, or pipelines for required deployment behavior.
 
-For n8n, setting `WEBHOOK_URL` creates a replacement Container App revision. The generated post-provision hook must poll both `/healthz` and `/` for up to five minutes and require six consecutive HTTP 200 results over 30 seconds. Do not accept one successful probe while the old revision is still deprovisioning. When `uniqueString()` output crosses a Bicep module boundary, constrain that parameter to exactly 13 characters.
+For n8n, setting `N8N_WEBHOOK_URL` creates a replacement Container App revision. The generated post-provision hook must poll both `/healthz` and `/` for up to five minutes and require six consecutive HTTP 200 results over 30 seconds. Do not accept one successful probe while the old revision is still deprovisioning. When `uniqueString()` output crosses a Bicep module boundary, constrain that parameter to exactly 13 characters.
 
 For Superset, a clean environment may not contain `SUPERSET_SECRET_KEY` or `SUPERSET_ADMIN_PASSWORD`. The generated Node hook must create cryptographically random values when absent, persist them with `azd env set`, never print them, and reuse existing values on reruns before creating Kubernetes secrets.
 
@@ -217,7 +217,7 @@ Run the journey's portable verification script against live outputs. Do not stop
 Examples:
 
 - Grafana: root HTTP 200 and `/api/health` reports database `ok`.
-- n8n: `/healthz` HTTP 200 and owner-setup or login page renders.
+- n8n: `/healthz` HTTP 200, owner-setup or login page renders, `N8N_WEBHOOK_URL` matches the deployed HTTPS URL, and the Container App reports min/max replicas 1 with Single revision mode.
 - Superset: pod `1/1 Running`, `/health` HTTP 200, login succeeds with the documented selectors.
 - AIMarket: 10 products, search and chat work, production API URL is baked into the frontend, and every product image loads.
 - SmartTodo: seed read, create, AI step generation, fetch, step update, delete, and absence confirmation all pass.

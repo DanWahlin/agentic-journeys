@@ -29,7 +29,7 @@ Read the app-specific skill FIRST to understand requirements before generating a
 
 | App | Skill | Key Requirements |
 |-----|-------|-----------------|
-| n8n | `n8n-azure` | Port 5678, PostgreSQL required, 60s+ startup probe, WEBHOOK_URL via post-provision hook, SSL_REJECT_UNAUTHORIZED=false |
+| n8n | `n8n-azure` | Port 5678, PostgreSQL required, minReplicas: 1 and maxReplicas: 1 by default, Single active revision mode, 60s+ startup probe, N8N_WEBHOOK_URL via post-provision hook, SSL_REJECT_UNAUTHORIZED=false |
 | Grafana | `grafana-azure` | Port 3000, SQLite default (no DB needed), maxReplicas: 1 for SQLite, /api/health probe, GF_* env vars |
 | Superset | `superset-azure` | AKS (not Container Apps), PostgreSQL required, psycopg2 custom Docker image, K8s manifests, hook-generated Superset secrets on clean environments |
 
@@ -149,7 +149,7 @@ az provider register --namespace Microsoft.ContainerService  # AKS only
 - **Superset**: Custom timing for migrations + psycopg2 init container
 
 ### Scale-to-Zero
-Container Apps default to min replicas 0. After deployment, the app may take 60-90 seconds to respond on first request (cold start + image pull). Set `minReplicas: 1` for CI/dev verification, then scale down after validation.
+Container Apps default to min replicas 0. After deployment, the app may take 60-90 seconds to respond on first request (cold start + image pull). Set `minReplicas: 1` for CI/dev verification. Scale down afterward only when the app-specific skill permits it. For n8n, retain `minReplicas: 1` for scheduled, polling, and background workflows; its HTTP scaler can't wake these workflows from zero. Only offer scale-to-zero as an explicit idle-demo choice with no executions in progress and acceptance that background automation pauses. Keep n8n at `maxReplicas: 1` with Single active revision mode.
 
 ### Shared OSS Deploy Recipe
 When the learner gives a short request, expand it to include: location, generated secure secrets, app-specific health probe path, `minReplicas: 1` for verification when useful, “resolve any issues,” and log problems to `issues.md`. For Superset, the generated cross-platform hook must create and persist missing `SUPERSET_SECRET_KEY` and `SUPERSET_ADMIN_PASSWORD` values without printing them, then reuse them on reruns.

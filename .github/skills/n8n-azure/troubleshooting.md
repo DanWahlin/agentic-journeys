@@ -21,8 +21,8 @@ Run `node scripts/verify-n8n.mjs` first. The verifier reads deployment values th
 
 ```bicep
 scale: {
-  minReplicas: 1 // CI/e2e only; may be 0 for cost-saving demos after validation
-  maxReplicas: 3
+  minReplicas: 1
+  maxReplicas: 1
 }
 
 probes: [
@@ -44,7 +44,7 @@ probes: [
 ]
 ```
 
-For CI/e2e runs, set `minReplicas: 1` so the verification step is not testing a scale-to-zero cold start instead of the deployment.
+Keep `minReplicas: 1` for verification and for scheduled, polling, or background workflows. Don't automatically scale down after verification; use the explicit [idle-demo exception](SKILL.md#scaling-constraints) only when its restrictions are acceptable. Keep `maxReplicas: 1` and Single active revision mode.
 
 ---
 
@@ -161,15 +161,15 @@ This is safe for Azure PostgreSQL (Azure manages the certificates, connection is
 
 ---
 
-## Issue 7: WEBHOOK_URL Not Set
+## Issue 7: N8N_WEBHOOK_URL Not Set
 
 **Symptoms:**
 - Webhooks don't work
 - n8n shows incorrect URLs for webhooks
 
-**Root Cause:** WEBHOOK_URL wasn't configured after deployment.
+**Root Cause:** N8N_WEBHOOK_URL wasn't configured after deployment.
 
-**Solution:** Run `node infra-n8n/hooks/postprovision.js`. The idempotent portable hook reads the required values, discovers the FQDN, updates `WEBHOOK_URL`, and then requires `/healthz` and `/` to return HTTP 200 for six consecutive probes over 30 seconds. It exits nonzero if Azure CLI fails or stable readiness is not reached within five minutes.
+**Solution:** Run `node infra-n8n/hooks/postprovision.js`. The idempotent portable hook reads the required values, discovers the FQDN, and makes one `az containerapp update` call with `--set-env-vars N8N_WEBHOOK_URL=https://<fqdn>` and `--remove-env-vars WEBHOOK_URL`. It must not use `--replace-env-vars` or `--remove-all-env-vars`, which can discard unrelated variables and secret references. A fresh deployment may report that `WEBHOOK_URL` doesn't exist; this is benign. The hook then requires `/healthz` and `/` to return HTTP 200 for six consecutive probes over 30 seconds. It exits nonzero if the CLI update fails or stable readiness is not reached within five minutes.
 
 ---
 
@@ -199,12 +199,12 @@ This is safe for Azure PostgreSQL (Azure manages the certificates, connection is
 3. **SSL is mandatory** - Azure PostgreSQL requires SSL with relaxed certificate validation
 4. **`newGuid()` is position-sensitive** - only works as parameter default
 5. **Register providers first** - prevents 409 conflicts
-6. **Post-provision hooks automate WEBHOOK_URL** - eliminates manual steps
+6. **Post-provision hooks automate N8N_WEBHOOK_URL** - eliminates manual steps
 7. **15-20 minute deployment is normal** - don't panic
 8. **Enable publicNetworkAccess explicitly** - AVM defaults to disabled
 9. **Pin passwords in azd env** - `newGuid()` regenerates on redeploy, causing auth failures
 10. **Burstable SKU doesn't support HA** - set `highAvailability: 'Disabled'`
-11. **CI should keep n8n warm** - set Container Apps `minReplicas: 1`, then optionally scale to zero after validation
+11. **Keep n8n running for background automation** - use `minReplicas: 1` and `maxReplicas: 1`; scale-to-zero is only an explicit idle-demo choice that pauses background automation
 
 ---
 
@@ -314,8 +314,8 @@ authConfig: {
 **Solution:**
 ```bicep
 scale: {
-  minReplicas: 1 // CI/e2e only; may be 0 for cost-saving demos after validation
-  maxReplicas: 3
+  minReplicas: 1
+  maxReplicas: 1
 }
 
 probes: [
@@ -345,3 +345,13 @@ probes: [
 ```
 
 Then run `node scripts/verify-n8n.mjs`. It polls `/healthz` before launching bundled Playwright Chromium for the UI assertion.
+
+---
+
+## Issue 14: Python Task Runner Warning
+
+**Symptom:** The pinned image logs `Failed to start Python task runner in internal mode` because Python 3 is absent.
+
+**Impact:** Python Code-node execution isn't supported by this lab's configuration. This message alone doesn't establish deployment failure: the JavaScript runner and n8n UI can still start normally.
+
+**Action:** Confirm the JavaScript task runner registers, `/healthz` returns HTTP 200, and the owner-setup or login page renders. Record the Python limitation separately. Don't install Python on the host or introduce extra workers merely to silence the warning, and don't dismiss unrelated startup, database, or workflow errors.

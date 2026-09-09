@@ -23,12 +23,12 @@ Default Container Apps health probes check too early or check the wrong endpoint
 
 n8n exposes a dedicated health endpoint at `/healthz` (`N8N_ENDPOINT_HEALTH`, default `healthz`). Use `/healthz` for Container Apps probes instead of `/`; the UI root can hang or redirect while startup/auth/session assets initialize, which makes it a poor readiness signal.
 
-For CI/end-to-end tests, keep one replica warm with `minReplicas: 1`. Scale-to-zero is fine for demos after validation, but it introduces cold-start ambiguity into automated verification.
+Keep `minReplicas: 1` for verification and for scheduled, polling, or background workflows. Keep `maxReplicas: 1`; this lab doesn't coordinate multiple n8n main processes. Scale-to-zero is an explicit idle-demo option only: no executions may be in progress, and the learner must accept that background automation won't run while scaled to zero. See [Scaling Constraints](../SKILL.md#scaling-constraints).
 
 ```bicep
 scale: {
   minReplicas: 1
-  maxReplicas: 3
+  maxReplicas: 1
 }
 
 probes: [
@@ -129,7 +129,8 @@ startup_probe {
 
 | Setting | Value | Reason |
 |---------|-------|--------|
-| Min replicas in CI | 1 | Avoid scale-to-zero/cold-start ambiguity during automated verification |
+| Min replicas (default) | 1 | Avoid verification cold starts and keep background triggers running |
+| Max replicas | 1 | Avoid uncoordinated n8n main processes |
 | Liveness `initialDelaySeconds` | 60 | n8n initialization time |
 | Liveness `periodSeconds` | 30 | Reduce check frequency once running |
 | Startup `failureThreshold` | 10 | AVM cap; paired with 30s period for 5 min startup window |

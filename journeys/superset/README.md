@@ -220,7 +220,7 @@ The agent handles the entire deployment:
 >
 > 1. Watch your resources appear in real-time. Open the [Azure Portal](https://portal.azure.com) → search for your resource group, or run `az resource list --resource-group rg-<env-name> --output table` in a separate terminal.
 > 2. Read the [init container pattern](#psycopg2-installation-critical) below. Why can't you just `pip install psycopg2-binary` in the main container? (Hint: read-only filesystem.)
-> 3. **Compare costs:** This AKS deployment costs ~$200/month, compared with ~$25 for n8n and ~$10 for Grafana. Review the [Cost Breakdown](#cost-breakdown) and decide when AKS-specific capabilities justify the premium.
+> 3. **Compare costs:** This AKS deployment costs ~$200/month. Compare the [n8n costs](../n8n/README.md#cost-breakdown) and Grafana's ~$10-20/month, distinguishing always-on automation from optional scale-to-zero demos. Review the [Cost Breakdown](#cost-breakdown) and decide when AKS-specific capabilities justify the premium.
 > 4. Explore Superset's [creating your first dashboard guide](https://superset.apache.org/user-docs/using-superset/creating-your-first-dashboard) to see what you can build after deployment.
 
 You can ask follow-up questions anytime:
@@ -380,7 +380,7 @@ Health endpoint: `GET /health` → `{"status": "OK"}` (HTTP 200)
 | Load Balancer | Standard | ~$20 |
 | **Total** | | **~$200-215/month** |
 
-⚠️ **Superset on AKS is significantly more expensive** than the Container Apps deployments (n8n ~$25-35, Grafana ~$10-20). Consider Container Apps if AKS features aren't required. Each Standard_D2s_v3 node costs ~$70/month ($0.096/hr × 730 hrs). For a lab run, a single-node pool is enough for Superset. Add *"use a single-node system pool"* to your deployment prompt to cut the node cost in half.
+⚠️ **Superset on AKS is significantly more expensive** than the Container Apps demos (n8n ~$25-35 only with optional scale-to-zero, Grafana ~$10-20). n8n's default always-on configuration costs more; see its [Cost Breakdown](../n8n/README.md#cost-breakdown). Consider Container Apps if AKS features aren't required. Each Standard_D2s_v3 node costs ~$70/month ($0.096/hr × 730 hrs). For a lab run, a single-node pool is enough for Superset. Add *"use a single-node system pool"* to your deployment prompt to cut the node cost in half.
 
 > 💡 **Pausing instead of deleting:** Want to come back tomorrow without paying for idle nodes? Stop the cluster. Compute billing stops while the cluster is stopped, though you still pay for disks and the load balancer IP:
 >
@@ -482,7 +482,7 @@ Ask the agent:
 ## Assignment
 
 1. Verify that Superset is using PostgreSQL, not SQLite. Ask the agent: *"Is my Superset deployment using PostgreSQL?"*
-2. Compare the three deployments: Grafana (~$10-20/month, ~2 minutes to provision), n8n (~$25-35/month, ~7 minutes to provision), and Superset (~$200-215/month, ~15-20 minutes to provision). These provisioning times are only part of the longer guided journey estimates shown at the top of each README. When would you choose each?
+2. Compare the three deployments: Grafana (~$10-20/month, ~2 minutes to provision), n8n ([cost depends on scaling](../n8n/README.md#cost-breakdown), ~7 minutes to provision), and Superset (~$200-215/month, ~15-20 minutes to provision). These provisioning times are only part of the longer guided journey estimates shown at the top of each README. When would you choose each?
 3. When you're done, continue to Cleanup below.
 
 ---
