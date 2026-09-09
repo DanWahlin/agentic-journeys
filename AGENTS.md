@@ -149,7 +149,7 @@ Configure the journey E2E repository variables and secrets interactively with `n
 - **Deployment Tool**: Azure Developer CLI (azd) configured via `azure.yaml`
 - **Hosting**: Azure Static Web Apps (WeatherView), Azure Container Apps (n8n, Grafana, AIMarket), Azure Functions (SmartTodo), or AKS (Superset)
 - **Database**: Azure Database for PostgreSQL Flexible Server, Cosmos DB, or SQLite (local dev)
-- **Post-provisioning**: Hooks configure app-specific settings after deployment (e.g., WEBHOOK_URL)
+- **Post-provisioning**: Hooks configure app-specific settings after deployment (e.g., N8N_WEBHOOK_URL)
 
 ### Infrastructure Pattern
 

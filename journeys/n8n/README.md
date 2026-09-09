@@ -16,7 +16,7 @@ In this journey, you'll deploy [n8n](https://n8n.io), an open-source, self-hoste
 - Configure health probes for slow-starting containers
 - Troubleshoot common deployment issues using Azure MCP (Model Context Protocol) tools and container logs
 
-> 💰 **Estimated Cost**: ~$25–35/month while the resources exist (see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure when you finish the journey.
+> 💰 **Estimated Cost**: The default always-on Container App costs ~$60–80/month, plus PostgreSQL and logs. The optional scale-to-zero demo costs ~$25–35/month total (see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure when you finish the journey.
 
 ## Prerequisites
 
@@ -52,7 +52,8 @@ The deployment is complete when:
 
 - [ ] `<n8n-url>/healthz` returns HTTP 200.
 - [ ] The n8n UI returns HTTP 200 and renders either **Set up owner account** or the normal login page.
-- [ ] The Container App has a `WEBHOOK_URL` value that uses the deployed HTTPS URL.
+- [ ] The Container App has an `N8N_WEBHOOK_URL` value that uses the deployed HTTPS URL.
+- [ ] The Container App has `minReplicas: 1`, `maxReplicas: 1`, and `activeRevisionsMode: Single` for the default deployment.
 
 The journey is complete after the [Cleanup](#cleanup) procedure removes the Azure resource group.
 
@@ -64,7 +65,7 @@ The journey is complete after the [Cleanup](#cleanup) procedure removes the Azur
 graph TB
     subgraph RG["Azure Resource Group"]
         subgraph CAE["Container Apps Environment"]
-            N8N["n8n Container App<br/>(0-3 replicas)"]
+            N8N["n8n Container App<br/>(1 replica by default)"]
         end
         LA["Log Analytics Workspace<br/>(monitoring)"]
         PG["Azure PostgreSQL Flexible Server<br/>(Standard_B1ms · Burstable · 32GB · v16)"]
@@ -85,7 +86,7 @@ graph TB
 
 **Azure resources created:**
 
-- **Azure Container Apps**: Serverless hosting with scale-to-zero
+- **Azure Container Apps**: Serverless hosting with one always-on replica by default
 - **Azure Database for PostgreSQL Flexible Server**: Managed database for persistent storage
 - **Azure Log Analytics**: Centralized monitoring and logging
 - **User-Assigned Managed Identity**: Secure access to Azure resources
@@ -175,8 +176,10 @@ Give the agent one prompt that covers the location, secrets, health probes, and 
 ```
 > Deploy n8n to Azure using Bicep and azd. Set the location to westus,
   generate secure passwords for all credentials, set the Container App
-  minReplicas to 1 so I can verify it right away without a cold start,
+  minReplicas and maxReplicas to 1, use Single active revision mode,
   and use n8n's /healthz endpoint for startup/readiness/liveness probes.
+  Keep the instance running after verification so scheduled and polling
+  workflows can run. Do not automatically enable scale-to-zero.
   If a deployment step fails, inspect the relevant logs, make the smallest
   safe correction, rerun the failed step, and record the problem and
   resolution in issues.md. Do not print secrets.
@@ -189,7 +192,7 @@ The agent handles the entire deployment:
 3. Generates modular Bicep infrastructure in `infra-n8n/`
 4. Updates `azure.yaml`, registers Azure providers, sets environment variables
 5. Runs `azd up`
-6. Configures `WEBHOOK_URL` with `infra-n8n/hooks/postprovision.js`, referenced directly from `azure.yaml`. This cross-platform Node.js hook avoids interpolated shell commands and uses the static PowerShell JSON-payload launcher only when Windows must resolve Azure CLI shims. Because the update creates a replacement Container App revision, the hook must not exit until both `/healthz` and `/` return HTTP 200 for six consecutive probes over 30 seconds.
+6. Configures `N8N_WEBHOOK_URL` with `infra-n8n/hooks/postprovision.js`, referenced directly from `azure.yaml`. This cross-platform Node.js hook avoids interpolated shell commands and uses the static PowerShell JSON-payload launcher only when Windows must resolve Azure CLI shims. Because the update creates a replacement Container App revision, the hook must not exit until both `/healthz` and `/` return HTTP 200 for six consecutive probes over 30 seconds.
 
 Do not start verification until `azd up` and the `postprovision` hook exit successfully.
 
@@ -212,7 +215,7 @@ You can ask follow-up questions anytime during or after generation:
 
 ### Step 3: Verify
 
-Ask the agent to check the health endpoint, `WEBHOOK_URL`, and Container App logs:
+Ask the agent to check the health endpoint, `N8N_WEBHOOK_URL`, Container App logs, and deployed replica/revision settings:
 
 ```text
 > Verify the n8n deployment. Report each acceptance criterion as pass or fail.
@@ -225,6 +228,8 @@ node .github/scripts/verify-n8n.mjs
 ```
 
 The verifier must print `PASS: /healthz and UI returned HTTP 200` and the deployed n8n URL. Open that URL in a browser and confirm that the rendered page shows either **Set up owner account** or the normal login page. HTTP 401 is not a successful UI check.
+
+The checked-in HTTP verifier doesn't check scaling. Have the agent inspect the deployed Container App's `properties.template.scale` and `properties.configuration.activeRevisionsMode` through Azure CLI and report the replica/revision acceptance criterion separately.
 
 If verification fails, report the failed criterion, exact command, redacted error output, and last successful step in the same agent session:
 
@@ -258,7 +263,9 @@ The deployment automatically configures these n8n environment variables:
 | `N8N_PORT` | `5678` | n8n default port |
 | `N8N_PROTOCOL` | `https` | Protocol for generated URLs |
 | `N8N_ENDPOINT_HEALTH` | `healthz` | Dedicated health endpoint for probes |
-| `WEBHOOK_URL` | Auto-configured | Set by post-provision hook |
+| `N8N_WEBHOOK_URL` | Auto-configured | Public webhook base URL, set by post-provision hook |
+
+The pinned n8n release supports `N8N_WEBHOOK_URL` in place of the deprecated `WEBHOOK_URL`. Generate only the new setting. When updating an older deployment, have the hook remove the legacy setting as well so n8n no longer reports its deprecation warning.
 
 ### Container Resources
 
@@ -267,9 +274,16 @@ The deployment automatically configures these n8n environment variables:
 | Image | `docker.io/n8nio/n8n:2.30.6` |
 | CPU | 1.0 core |
 | Memory | 2 GiB |
-| Min Replicas | 1 while verifying the deployment; 0 afterward if you want scale-to-zero |
-| Max Replicas | 3 |
+| Min Replicas | 1 by default; keep for scheduled, polling, or background workflows |
+| Max Replicas | 1 |
+| Active Revisions Mode | Single |
 | Scale Rule | HTTP requests (10 concurrent per replica) |
+
+### Scaling and Background Workflows
+
+This journey runs one n8n main instance. Sharing PostgreSQL doesn't coordinate multiple main processes; increasing replicas can duplicate scheduled or polling executions. Keep `maxReplicas: 1` and Single active revision mode. A coordinated multi-main deployment requires a different architecture and isn't part of this lab.
+
+Keep `minReplicas: 1` when workflows must run without incoming HTTP requests. Scheduled triggers, polling, and persistent connections can't wake an HTTP-scaled app from zero. Only opt into `minReplicas: 0` for an idle demo when no executions are in progress and you accept that background automation won't run while scaled to zero. Keep `maxReplicas: 1` even then.
 
 ### Health Probes
 
@@ -298,6 +312,8 @@ Current n8n releases use built-in user management. On first launch, complete the
 
 ## Cost Breakdown
 
+The default `minReplicas: 1` deployment costs approximately **$60-80/month for Container Apps alone**, plus PostgreSQL and Log Analytics. The lower estimate below applies only to the **optional scale-to-zero demo**, not an always-running automation service.
+
 | Resource | SKU | Monthly Cost |
 |----------|-----|--------------|
 | Container Apps (scale-to-zero) | Consumption (1 vCPU, 2GB) | ~$5-15 |
@@ -305,7 +321,7 @@ Current n8n releases use built-in user management. On first launch, complete the
 | Log Analytics | Pay-per-GB (30-day retention) | ~$2-5 |
 | **Total** | | **~$25-35/month** |
 
-After verification, you can set `minReplicas: 0` to reduce idle costs through scale-to-zero. If you keep `minReplicas: 1` for production, expect ~$60-80/month for Container Apps alone.
+Don't automatically scale down after verification. Use `minReplicas: 0` only under the [background-workflow restrictions](#scaling-and-background-workflows), or run Cleanup to stop all resource costs when the lab is finished.
 
 ---
 
@@ -343,7 +359,13 @@ The agent uses `azure_deploy_app_logs` to pull logs and identify the issue.
 5. Restart the Container App revision.
 6. Confirm that the logs no longer contain `ECONNREFUSED` or SSL handshake errors.
 
-### WEBHOOK_URL Not Set
+### Python Task Runner Warning
+
+The pinned image can log `Failed to start Python task runner in internal mode` because Python 3 isn't included. This warning alone doesn't mean the deployment failed: confirm that the JavaScript task runner registers, `/healthz` returns HTTP 200, and the owner-setup or login page renders.
+
+Python Code-node execution isn't supported by this lab's configuration. Don't install Python on the host or add extra workers just to silence the warning. Investigate other startup, database, or workflow errors separately.
+
+### N8N_WEBHOOK_URL Not Set
 
 **Symptom:** Webhooks don't work or n8n displays an incorrect webhook URL.
 
@@ -355,7 +377,7 @@ The agent uses `azure_deploy_app_logs` to pull logs and identify the issue.
 node infra-n8n/hooks/postprovision.js
 ```
 
-The hook checks `/healthz` and `/` six times over 30 seconds and only succeeds if every check returns HTTP 200. If it reports a failure, use the **When something fails** procedure in [Deploy with the Agent](#deploy-with-the-agent).
+The hook sets `N8N_WEBHOOK_URL` to the deployed HTTPS URL and removes the deprecated `WEBHOOK_URL` if present. It checks `/healthz` and `/` six times over 30 seconds and only succeeds if every check returns HTTP 200. If it reports a failure, use the **When something fails** procedure in [Deploy with the Agent](#deploy-with-the-agent).
 
 ### Resource Provider 409 Conflicts
 
@@ -386,7 +408,7 @@ param n8nEncryptionKey string = newGuid()
 
 ## Key Learnings
 
-- **Post-provision hooks** solve circular dependencies (like WEBHOOK_URL needing the deployed URL).
+- **Post-provision hooks** solve circular dependencies (like N8N_WEBHOOK_URL needing the deployed URL).
 - **Azure MCP tools provide current Bicep schemas.** This lets the agent use actual API versions instead of guessing.
 - **Register providers first.** This prevents 409 conflicts during deployment.
 - **Same agent, different skills.** The agent loaded `n8n-azure` and adapted to n8n's specific requirements automatically.
@@ -404,7 +426,7 @@ param n8nEncryptionKey string = newGuid()
 ## Cleanup
 
 > [!CAUTION]
-> This command permanently deletes the deployment and its PostgreSQL data. Export each workflow that you want to keep before you continue.
+> This command deletes the deployment and its live PostgreSQL database. Export each workflow that you want to keep before you continue. Don't rely on deleted-server recovery as your backup strategy.
 
 Read and save the resource group name before deletion:
 
@@ -418,13 +440,15 @@ Run the cleanup from the repository root on the host machine:
 azd down --force --purge
 ```
 
-PostgreSQL deletion can take 3–5 minutes. After the command exits successfully, verify the deletion:
+Full teardown can take several minutes. Wait for the command to exit successfully, then verify the resource-group deletion:
 
 ```text
 az group exists --name <resource-group-name>
 ```
 
 The command must return `false`.
+
+**Backup retention:** Azure can retain PostgreSQL Flexible Server recovery backups for five days after server deletion. Neither `--purge` nor an absent resource group proves immediate erasure of those provider-held backups. See Microsoft's [deleted-server recovery documentation](https://learn.microsoft.com/en-us/azure/postgresql/backup-restore/how-to-restore-deleted-server).
 
 ---
 

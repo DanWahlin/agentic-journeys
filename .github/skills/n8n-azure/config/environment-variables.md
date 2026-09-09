@@ -76,15 +76,17 @@ Current n8n releases use built-in user management. The first browser visit shows
 
 | Variable | Value | Required | Description |
 |----------|-------|----------|-------------|
-| `WEBHOOK_URL` | `https://<fqdn>` | ⚠️ | Webhook base URL |
+| `N8N_WEBHOOK_URL` | `https://<fqdn>` | ⚠️ | Public base URL for test and production webhooks |
 
-### WEBHOOK_URL Circular Dependency
+The pinned n8n 2.30.6 release reads this setting through [`GlobalConfig.webhookUrl`](https://github.com/n8n-io/n8n/blob/n8n%402.30.6/packages/%40n8n/config/src/index.ts). Its [`UrlService`](https://github.com/n8n-io/n8n/blob/n8n%402.30.6/packages/cli/src/services/url.service.ts) uses it for both test and production webhooks, preferring it over the deprecated `WEBHOOK_URL`. Generate only `N8N_WEBHOOK_URL`.
 
-WEBHOOK_URL cannot be set during initial deployment because:
+### N8N_WEBHOOK_URL Circular Dependency
+
+N8N_WEBHOOK_URL cannot be set during initial deployment because:
 1. It depends on the Container App FQDN
 2. FQDN isn't known until after the Container App is created
 
-**Solution:** Generate `infra-n8n/hooks/postprovision.js` as CommonJS. The hook reads the Container App and resource-group values through `azd`, obtains the FQDN with Azure CLI, and updates `WEBHOOK_URL` by invoking Azure CLI with argument arrays. Because that update creates a replacement revision, require `/healthz` and `/` to return HTTP 200 for six consecutive probes over 30 seconds before the hook exits. Reference the `.js` file directly from `azure.yaml`; don't use shell variables or `shell: sh`.
+**Solution:** Generate `infra-n8n/hooks/postprovision.js` as CommonJS. The hook reads the Container App and resource-group values through `azd`, obtains the FQDN with Azure CLI, and makes one `az containerapp update` call using argument arrays with `--set-env-vars N8N_WEBHOOK_URL=https://<fqdn>` and `--remove-env-vars WEBHOOK_URL`. Don't use `--replace-env-vars` or `--remove-all-env-vars`; those options can discard unrelated environment variables and secret references. On a fresh deployment, a message that `WEBHOOK_URL` doesn't exist is benign and must not fail an otherwise successful update. Because the update creates a replacement revision, require `/healthz` and `/` to return HTTP 200 for six consecutive probes over 30 seconds before the hook exits. Reference the `.js` file directly from `azure.yaml`; don't use shell variables or `shell: sh`.
 
 ## Secrets Management
 
