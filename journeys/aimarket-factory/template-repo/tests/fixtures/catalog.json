@@ -1,0 +1,171 @@
+{
+  "products": [
+    {
+      "id": "prod-1",
+      "name": "UltraBook Pro 15",
+      "price": 1299.99,
+      "inventory": 25,
+      "rating": 4.7,
+      "category": "Electronics",
+      "tags": [
+        "laptop",
+        "ultrabook",
+        "portable"
+      ],
+      "imageUrl": "https://images.example.test/prod-1.webp"
+    },
+    {
+      "id": "prod-2",
+      "name": "Wireless Noise-Canceling Headphones",
+      "price": 249.99,
+      "inventory": 100,
+      "rating": 4.5,
+      "category": "Electronics",
+      "tags": [
+        "headphones",
+        "wireless",
+        "noise-canceling"
+      ],
+      "imageUrl": "https://images.example.test/prod-2.webp"
+    },
+    {
+      "id": "prod-3",
+      "name": "Trail Runner X200",
+      "price": 129.99,
+      "inventory": 60,
+      "rating": 4.3,
+      "category": "Sports",
+      "tags": [
+        "running",
+        "shoes",
+        "trail"
+      ],
+      "imageUrl": "https://images.example.test/prod-3.webp"
+    },
+    {
+      "id": "prod-4",
+      "name": "Organic Cotton Crew Neck",
+      "price": 34.99,
+      "inventory": 200,
+      "rating": 4.1,
+      "category": "Clothing",
+      "tags": [
+        "t-shirt",
+        "organic",
+        "cotton"
+      ],
+      "imageUrl": "https://images.example.test/prod-4.webp"
+    },
+    {
+      "id": "prod-5",
+      "name": "Smart Home Hub",
+      "price": 89.99,
+      "inventory": 75,
+      "rating": 4.4,
+      "category": "Electronics",
+      "tags": [
+        "smart-home",
+        "hub",
+        "voice-control"
+      ],
+      "imageUrl": "https://images.example.test/prod-5.webp"
+    },
+    {
+      "id": "prod-6",
+      "name": "Ceramic Pour-Over Set",
+      "price": 45.99,
+      "inventory": 40,
+      "rating": 4.8,
+      "category": "Home",
+      "tags": [
+        "coffee",
+        "pour-over",
+        "ceramic"
+      ],
+      "imageUrl": "https://images.example.test/prod-6.webp"
+    },
+    {
+      "id": "prod-7",
+      "name": "Pro Django",
+      "price": 39.99,
+      "inventory": 150,
+      "rating": 4.6,
+      "category": "Books",
+      "tags": [
+        "programming",
+        "python",
+        "django"
+      ],
+      "imageUrl": "https://images.example.test/prod-7.webp"
+    },
+    {
+      "id": "prod-8",
+      "name": "Yoga Mat Premium",
+      "price": 59.99,
+      "inventory": 80,
+      "rating": 4.2,
+      "category": "Sports",
+      "tags": [
+        "yoga",
+        "mat",
+        "exercise"
+      ],
+      "imageUrl": "https://images.example.test/prod-8.webp"
+    },
+    {
+      "id": "prod-9",
+      "name": "Winter Puffer Jacket",
+      "price": 189.99,
+      "inventory": 35,
+      "rating": 4.5,
+      "category": "Clothing",
+      "tags": [
+        "jacket",
+        "winter",
+        "puffer"
+      ],
+      "imageUrl": "https://images.example.test/prod-9.webp"
+    },
+    {
+      "id": "prod-10",
+      "name": "Building Block Castle Set",
+      "price": 49.99,
+      "inventory": 90,
+      "rating": 4.9,
+      "category": "Toys",
+      "tags": [
+        "building",
+        "blocks",
+        "kids"
+      ],
+      "imageUrl": "https://images.example.test/prod-10.webp"
+    }
+  ],
+  "search": {
+    "query": "something lightweight for travel",
+    "results": [
+      {
+        "id": "prod-1",
+        "name": "UltraBook Pro 15",
+        "price": 1299.99,
+        "inventory": 25,
+        "rating": 4.7,
+        "category": "Electronics",
+        "tags": [
+          "laptop",
+          "ultrabook",
+          "portable"
+        ],
+        "imageUrl": "https://images.example.test/prod-1.webp",
+        "score": 0.94
+      }
+    ]
+  },
+  "chat": {
+    "role": "assistant",
+    "content": "The UltraBook Pro 15 is in the catalog for $1,299.99 and has a 4.7 rating.",
+    "productIds": [
+      "prod-1"
+    ]
+  }
+}

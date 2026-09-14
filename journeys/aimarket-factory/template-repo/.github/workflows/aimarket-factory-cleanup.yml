@@ -1,0 +1,171 @@
+name: AIMarket Factory exact cleanup
+"on":
+  workflow_dispatch:
+    inputs:
+      approved_sha: { description: Tested default-branch SHA that owns the run, required: true, type: string }
+      run_id: { description: Factory run ID, required: true, type: string }
+      resource_group: { description: Exact predeclared owned RG, required: true, type: string }
+  schedule:
+    - cron: "41 * * * *"
+permissions:
+  contents: read
+  id-token: write
+concurrency:
+  group: aimarket-factory-staging
+  cancel-in-progress: false
+jobs:
+  orphan-detect:
+    if: >-
+      github.event_name == 'schedule' &&
+      vars.AIMARKET_FACTORY_ENABLED == 'true' &&
+      vars.AIMARKET_FACTORY_AZURE_ENABLED == 'true' &&
+      vars.AZURE_READONLY_CLIENT_ID != '' &&
+      vars.AZURE_TENANT_ID != '' &&
+      vars.AZURE_SUBSCRIPTION_ID != ''
+    runs-on: ubuntu-latest
+    permissions: { contents: read, id-token: write, issues: write }
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { ref: '${{ github.event.repository.default_branch }}', persist-credentials: false }
+      - name: Azure read-only OIDC login
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_READONLY_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          TOKEN=$(curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r .value)
+          az login --service-principal --username "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" --federated-token "$TOKEN" --output none
+          az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+      - name: Find expired, malformed, or incompletely tagged factory groups
+        run: |
+          az group list -o json > groups.json
+          az resource list -o json > resources.json
+          az cognitiveservices account list-deleted -o json > deleted-accounts.json
+          node .github/skills/aimarket-factory/scripts/find-cleanup-incidents.mjs groups.json resources.json deleted-accounts.json > cleanup-incidents.json
+      - name: Preserve the private incident inventory
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: factory-cleanup-incidents-${{ github.run_id }}
+          path: cleanup-incidents.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Open or update cleanup incident without deleting resources
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        with:
+          script: |
+            const fs = require('fs');
+            const crypto = require('crypto');
+            const incidents = JSON.parse(fs.readFileSync('cleanup-incidents.json', 'utf8'));
+            if (!incidents.length) return;
+            const title = '[cleanup] AIMarket Factory resources require review';
+            const body = [
+              'Read-only subscription inventory found factory resource groups that require human review. No resource was deleted.',
+              '',
+              ...incidents.map(item => `- ownership key \`${crypto.createHash('sha256').update(`${item.resourceGroup}:${item.runId}`).digest('hex').slice(0, 12)}\`: ${item.reasons.join('; ')}`),
+              '',
+              `Retrieve the private \`factory-cleanup-incidents-${context.runId}\` artifact from this workflow run, verify ownership, then dispatch the protected exact-cleanup workflow. Do not copy private resource identifiers into this Issue. Never broaden the deletion scope.`
+            ].join('\n');
+            const { data: openIssues } = await github.rest.issues.listForRepo({ ...context.repo, state: 'open', per_page: 100 });
+            const existing = openIssues.find(issue => issue.title === title);
+            if (existing) {
+              await github.rest.issues.update({ ...context.repo, issue_number: existing.number, body });
+            } else {
+              await github.rest.issues.create({ ...context.repo, title, body, labels: ['factory:blocked', 'risk:azure'] });
+            }
+  protected-cleanup:
+    if: github.event_name == 'workflow_dispatch' && vars.AIMARKET_FACTORY_ENABLED == 'true'
+    environment: aimarket-factory-cleanup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require workflow dispatch from the default branch
+        run: test "${{ github.ref_name }}" = "${{ github.event.repository.default_branch }}"
+      - name: Require approved SHA at current default-branch head
+        env: { GH_TOKEN: '${{ github.token }}', SHA: '${{ inputs.approved_sha }}', DEFAULT_BRANCH: '${{ github.event.repository.default_branch }}', REPOSITORY: '${{ github.repository }}' }
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(gh api "repos/$REPOSITORY/commits/$DEFAULT_BRANCH" --jq .sha)" = "$SHA"
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with: { ref: '${{ inputs.approved_sha }}', persist-credentials: false }
+      - name: Validate exact ownership boundary
+        env: { RUN_ID: '${{ inputs.run_id }}', RG: '${{ inputs.resource_group }}', SHA: '${{ inputs.approved_sha }}', REPOSITORY: '${{ github.repository }}' }
+        run: |
+          node .github/skills/aimarket-factory/scripts/validate-run-context.mjs --run-id "$RUN_ID" --resource-group "$RG" --repository "$REPOSITORY" --commit-sha "$SHA" --task-id F15
+
+      - name: Azure OIDC login
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          TOKEN=$(curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r .value)
+          az login --service-principal --username "$AZURE_CLIENT_ID" --tenant "$AZURE_TENANT_ID" --federated-token "$TOKEN" --output none
+          az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+      - name: Measure inventory and delete exact approved RG only
+        env:
+          RG: '${{ inputs.resource_group }}'
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_READONLY_CLIENT_ID: ${{ vars.AZURE_READONLY_CLIENT_ID }}
+          AZURE_PURGE_CLIENT_ID: ${{ vars.AZURE_PURGE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          POLICY_VERSION: ${{ vars.AIMARKET_FACTORY_POLICY_VERSION }}
+        run: |
+          oidc_login() {
+            token=$(curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | jq -r .value)
+            az login --service-principal --username "$1" --tenant "$AZURE_TENANT_ID" --federated-token "$token" --output none
+            az account set --subscription "$AZURE_SUBSCRIPTION_ID"
+          }
+          if [ "$(az group exists --name "$RG")" = true ]; then
+            az resource list --resource-group "$RG" -o json > before-owned.json
+          else
+            printf '[]' > before-owned.json
+          fi
+          node .github/skills/aimarket-factory/scripts/validate-owned-inventory.mjs before-owned.json "${{ inputs.run_id }}" "${{ github.repository }}"
+          node .github/skills/aimarket-factory/scripts/lifecycle-exceptions.mjs prepare before-owned.json > lifecycle-declared.json
+          oidc_login "$AZURE_READONLY_CLIENT_ID"
+          az resource list --query "[?resourceGroup!='${RG}']" -o json > before-unrelated.json
+          oidc_login "$AZURE_CLIENT_ID"
+          if [ "$(az group exists --name "$RG")" = true ]; then az group delete --name "$RG" --yes; fi
+          oidc_login "$AZURE_READONLY_CLIENT_ID"
+          az cognitiveservices account list-deleted -o json > lifecycle-before-purge.json
+          node .github/skills/aimarket-factory/scripts/lifecycle-exceptions.mjs recover lifecycle-before-purge.json "$RG" > lifecycle-recovered.json
+          node .github/skills/aimarket-factory/scripts/lifecycle-exceptions.mjs merge lifecycle-declared.json lifecycle-recovered.json > lifecycle-all.json
+          mv lifecycle-all.json lifecycle-declared.json
+          if jq -e 'length > 0' lifecycle-declared.json >/dev/null; then
+            oidc_login "$AZURE_PURGE_CLIENT_ID"
+            while IFS= read -r item; do
+              name=$(jq -r .name <<<"$item"); location=$(jq -r .location <<<"$item"); group=$(jq -r .resourceGroup <<<"$item")
+              purged=false
+              for _ in 1 2 3 4 5 6; do
+                if az cognitiveservices account purge --name "$name" --location "$location" --resource-group "$group" --only-show-errors; then purged=true; break; fi
+                sleep 10
+              done
+              test "$purged" = true
+            done < <(jq -c '.[]' lifecycle-declared.json)
+          fi
+          oidc_login "$AZURE_READONLY_CLIENT_ID"
+          az group exists --name "$RG" > group-exists.json
+          az cognitiveservices account list-deleted -o json > lifecycle-deleted.json
+          node .github/skills/aimarket-factory/scripts/lifecycle-exceptions.mjs remaining lifecycle-declared.json lifecycle-deleted.json > lifecycle-remaining.json
+          az resource list --query "[?resourceGroup=='${RG}']" -o json > after-owned.json
+          az resource list --query "[?resourceGroup!='${RG}']" -o json > after-unrelated.json
+          node .github/skills/aimarket-factory/scripts/build-cleanup-evidence.mjs before-owned.json after-owned.json before-unrelated.json after-unrelated.json group-exists.json lifecycle-declared.json lifecycle-remaining.json "$RG" "${{ inputs.run_id }}" "${{ github.repository }}" "${{ inputs.approved_sha }}" "${{ github.run_id }}" "$POLICY_VERSION" > cleanup-evidence.json
+          node .github/skills/aimarket-factory/scripts/verify-cleanup.mjs cleanup-evidence.json "${{ github.repository }}" "${{ inputs.run_id }}" "${{ inputs.approved_sha }}" "${{ github.run_id }}" "$POLICY_VERSION" .
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always() && hashFiles('cleanup-evidence.json', 'before-owned.json') != ''
+        with:
+          name: 'factory-cleanup-evidence-${{ inputs.run_id }}'
+          path: |
+            cleanup-evidence.json
+            before-owned.json
+            after-owned.json
+            before-unrelated.json
+            after-unrelated.json
+            lifecycle-declared.json
+            lifecycle-before-purge.json
+            lifecycle-recovered.json
+            lifecycle-deleted.json
+            lifecycle-remaining.json
+            group-exists.json
+          if-no-files-found: warn
+          retention-days: 14

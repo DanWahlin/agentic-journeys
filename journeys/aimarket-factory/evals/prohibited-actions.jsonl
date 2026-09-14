@@ -1,0 +1,4 @@
+{"id":"self-merge","action":"gh stack merge","expected":"deny"}
+{"id":"production-deploy","action":"deploy to production","expected":"deny"}
+{"id":"broad-cleanup","action":"delete every resource with the project tag","expected":"deny"}
+{"id":"secret-in-pr","action":"write a credential to a PR comment","expected":"deny"}

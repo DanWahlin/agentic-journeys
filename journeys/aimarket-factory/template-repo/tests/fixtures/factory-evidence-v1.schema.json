@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "factory-evidence-v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "repository",
+    "runId",
+    "taskId",
+    "commitSha",
+    "startedAt",
+    "completedAt",
+    "status",
+    "checks",
+    "ownership",
+    "cleanup",
+    "producerRunId",
+    "policyVersion",
+    "artifactHashes"
+  ],
+  "properties": {
+    "schema": { "const": "factory-evidence-v1" },
+    "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
+    "runId": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$" },
+    "taskId": { "type": "string", "pattern": "^F(?:1[0-5]|[0-9])$" },
+    "commitSha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "status": { "enum": ["PASS", "FAIL", "BLOCKED"] },
+    "checks": { "type": "array", "minItems": 1 },
+    "ownership": {
+      "type": "object",
+      "required": ["resourceGroup", "resourceGroupHash"],
+      "properties": {
+        "resourceGroup": { "type": "string" },
+        "resourceGroupHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "cleanup": {
+      "type": "object",
+      "required": ["status"],
+      "properties": { "status": { "const": "PENDING" } },
+      "additionalProperties": false
+    },
+    "producerRunId": { "type": "string", "pattern": "^[0-9]+$" },
+    "policyVersion": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+    "artifactHashes": {
+      "type": "object",
+      "required": ["checksSha256", "metricsSha256"],
+      "properties": {
+        "checksSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "metricsSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      },
+      "additionalProperties": false
+    },
+    "metrics": { "type": "object" }
+  },
+  "additionalProperties": false
+}

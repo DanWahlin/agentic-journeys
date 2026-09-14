@@ -1,0 +1,177 @@
+version: 1
+contract: aimarket-factory-policy
+product:
+  implementationStack: node-typescript-express-react
+  productionDeploymentAllowed: false
+  repositoryHost: github
+  repositoryVisibility: private
+  executionAgent: github-copilot-cloud-agent
+state:
+  labelPrefix: "factory:"
+  exactlyOneStateLabel: true
+  states:
+    - proposed
+    - needs-clarification
+    - planned
+    - ready
+    - running
+    - review
+    - blocked
+    - done
+    - cancelled
+  terminalStates: [done, cancelled]
+  humanOnlyTransitionsTo: [cancelled]
+  workflowProjectedTransitions:
+    - planned-to-ready-after-approved-plan-dependencies-and-wip
+    - review-to-done-after-verified-human-merge
+authority:
+  approvedWorkOrderRecord: factory/approved-work-orders.json
+  humanOnly:
+    - approve-rfc
+    - approve-parent-plan
+    - apply-ready-for-gated-work
+    - approve-and-run-copilot-pr-actions
+    - mark-pr-ready
+    - merge
+    - approve-staging-environment
+    - approve-cleanup-environment
+    - approve-release
+  prohibitedForAgentsAndWorkflows:
+    - merge
+    - auto-merge
+    - approve-own-work
+    - bypass-rules
+    - change-repository-visibility
+    - publish-release
+    - deploy-production
+    - administer-repository
+wip:
+  maxActiveImplementationStacks: 2
+  maxOpenLayersPerStack: 1
+  maxReviewPullRequests: 4
+  stagingConcurrency: 1
+dispatch:
+  readinessLabel: "factory:ready"
+  serialization: issue-scoped-workflow-concurrency
+  requireLiveDuplicateRecheck: true
+  maxSessionsPerIssue: 1
+  requireFreshLiveState: true
+  duplicateEventResult: no-op
+  requiredBeforeDispatch:
+    - approved-parent-plan
+    - automatic-or-gated-readiness
+    - dependencies-done
+    - issue-contract-valid
+    - expected-base-and-branch
+    - wip-available
+    - budgets-available
+    - issue-concurrency-entered
+stacks:
+  model: sequential-dependencies
+  requiredContract: dependencies-merged-current-default-branch
+  nativeVisualizationRequired: false
+  branchMayBelongToMultipleStacks: false
+  independentIssuesMayShareStack: false
+  automaticSyncAllowed: false
+  agentMergeAllowed: false
+  workflowMergeAllowed: false
+reservedPaths:
+  - .github/workflows/**
+  - .github/agents/**
+  - .github/skills/**
+  - factory/**
+  - scripts/setup-aimarket-factory*
+  - scripts/verify-aimarket-factory-live.mjs
+  - "**/*staging*"
+  - "**/*cleanup*"
+  - "**/*release*"
+credentials:
+  codingAgent:
+    github: read-only
+    azure: none
+    projects: none
+    environments: none
+    secrets: none
+  pullRequestChecks:
+    event: pull_request
+    githubToken: read-only
+    secrets: none
+    protectedEnvironment: none
+    executeUntrustedCode: true
+  privilegedPostCheck:
+    executeUntrustedCode: false
+    checkoutPullRequestHead: false
+    acceptedArtifactSchema: factory-post-check-result-v1
+    liveRevalidationRequired: true
+  azure:
+    authentication: oidc
+    reusableClientSecretAllowed: false
+    managedIdentityRequired: true
+    subscriptionWideContributorOrOwnerAllowed: false
+budgets:
+  maximumLiveTtlHours: 4
+  maximumEstimatedAzureUsdPerRun: 20
+  maximumActionsMinutesPerRun: 240
+  maximumCopilotPremiumRequestsPerRun: 40
+  exceedBehavior: stop-new-dispatch-and-provisioning
+azure:
+  environment: aimarket-factory-staging
+  productionScopeAllowed: false
+  dedicatedResourceGroupPerRun: true
+  requireHumanReviewer: true
+  requirePreflightTask: F11
+  preflightMustCheck:
+    - allowed-subscription
+    - region
+    - azure-ai-search-availability
+    - foundry-model-version-and-quota
+    - budget
+    - oidc
+    - conditional-role-delegation
+    - mandatory-staging-reviewer
+  requiredTags: [factory-run-id, factory-owner, factory-repository, factory-expires-at]
+  publicEndpointPolicy: temporary-and-time-bounded
+  resourceGroupRoleScopeRequired: true
+  deploymentContexts: [protected-workflow-dispatch, verified-default-branch]
+  forbiddenDeploymentContexts: [pull_request, pull_request_target, agent-branch]
+evidence:
+  schemaVersion: 1
+  sanitizeBeforeHashing: true
+  requiredBindings:
+    - repository
+    - runId
+    - commitSha
+    - policyVersion
+    - producerRunId
+    - timestamps
+    - checkConclusions
+    - artifactHashes
+  forbiddenContent:
+    - credentials
+    - tokens
+    - connection-strings
+    - cookies
+    - authorization-headers
+    - private-identifiers-in-public-artifacts
+cleanup:
+  requiredForPrerelease: true
+  finalizer: measured-always
+  primaryBoundary: exact-owned-resource-group
+  allowScopeBroadeningAfterFailure: false
+  enumerateAndDeleteAllAzdEnvironments: false
+  lifecycleExceptions:
+    initialPolicy: exact-cognitive-services-purge
+    allowedTypes: [Microsoft.CognitiveServices/accounts]
+    rejectOtherSoftDeleteResourceTypesBeforeDeletion: true
+    extensionRequiresReviewedExactPurgeAndAbsenceChecks: true
+  verify:
+    - resource-group-absent
+    - owned-tags-absent
+    - owned-soft-delete-absent
+    - unrelated-resources-preserved
+  orphanDetector:
+    mode: read-only
+    mayOpenIncident: true
+    mayDelete: false
+  protectedCleanupRequiresHumanApproval: true
+  failureResult: block-prerelease-and-open-cleanup-incident

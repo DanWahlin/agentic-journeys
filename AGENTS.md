@@ -72,9 +72,10 @@ Skills are loaded automatically based on context:
 
 1. **OSS deployments:** Use `@oss-to-azure-deployer` to guide the entire journey
 2. **Full-stack journeys (e.g., AIMarket):** Follow the journey's PLAN.md and use skills as needed
-3. **Skills load automatically** based on the app being deployed
-4. **Azure MCP tools** provide real-time schema lookups, deployment planning, and troubleshooting
-5. **Troubleshooting:** Reference app-specific troubleshooting.md files and use `azure_deploy_app_logs`
+3. **Factory journeys (e.g., AIMarket Factory):** Use PRODUCT.md, FACTORY.md, the task graph, and the inert private-lab template. A maintainer approves the immutable plan and explicit gates; a deterministic controller may project eligible approved work to `factory:ready`.
+4. **Skills load automatically** based on the app being deployed
+5. **Azure MCP tools** provide real-time schema lookups, deployment planning, and troubleshooting
+6. **Troubleshooting:** Reference app-specific troubleshooting.md files and use `azure_deploy_app_logs`
 
 ---
 
@@ -135,6 +136,7 @@ node .github/scripts/verify-grafana.mjs
 node .github/scripts/verify-n8n.mjs
 node .github/scripts/verify-superset.mjs
 node .github/scripts/verify-aimarket.mjs
+node .github/scripts/verify-aimarket-factory-journey.mjs
 node .github/scripts/verify-smart-todo.mjs
 node .github/scripts/verify-weather-view.mjs
 ```
@@ -262,6 +264,13 @@ journeys/
 ├── aimarket/                     # Full-stack journey (API + frontend + AI)
 │   ├── README.md
 │   └── PLAN.md
+├── aimarket-factory/             # GitHub-native software factory journey
+│   ├── README.md
+│   ├── PLAN.md
+│   ├── PRODUCT.md
+│   ├── FACTORY.md
+│   ├── factory/
+│   └── template-repo/            # Inert files installed into a private lab repository
 ├── smart-todo/                   # Full-stack journey (iOS + Functions + AI)
 │   ├── README.md
 │   └── PLAN.md

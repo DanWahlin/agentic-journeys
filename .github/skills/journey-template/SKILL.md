@@ -14,7 +14,7 @@ Generate a complete agentic journey from a user's app idea. A journey is a hands
 
 **Every journey README must include:**
 - No journey-sequence or learning-path numbering such as "Journey 2 of 5" — journeys are self-contained. Numbered phases and steps inside one journey are encouraged when they clarify the flow.
-- Honest first-run time + cost **if left running** + same-day teardown
+- Cost **if left running** + same-day teardown; do not estimate learner completion time
 - **Done when** checklist with concrete manual verification steps
 - Full-stack: **one-line default stack** at the first generate prompt (not a defaults table); put stack details in PLAN.md
 - Plugin commands: only `microsoft/azure-skills` / `azure@azure-skills`
@@ -31,14 +31,14 @@ Update root `README.md` learning path + journey table when adding a journey.
 
 ## Journey Types
 
-| Dimension | Full-Stack (e.g. AIMarket) | OSS Deployment (e.g. n8n, Grafana, Superset) |
-|-----------|---------------------------|----------------------------------------------|
-| **What the learner does** | Builds an app from scratch with GitHub Copilot | Deploys an existing OSS app via `@oss-to-azure-deployer` agent |
-| **Files generated** | README.md + PLAN.md | README.md + app-specific skill in `.github/skills/` |
-| **README structure** | "The Journey" with 3-5 phases (adapt to app complexity) | "Deploy with the Agent" with 3 steps (Setup → Deploy → Verify) |
-| **Images** | 4-6 (one per phase boundary) | 2 (hero + deployment) |
-| **Unique sections** | "The Spec", "How Agentic AI is Used", one-line default stack at first prompt | "Configuration Reference", "Key Learnings", skip rules if expensive |
-| **Compute target** | Container Apps, App Service, Functions, Static Web Apps, AKS | Container Apps, AKS, App Service |
+| Dimension | Full-Stack (e.g. AIMarket) | OSS Deployment (e.g. n8n, Grafana, Superset) | Factory (e.g. AIMarket Factory) |
+|-----------|---------------------------|----------------------------------------------|----------------------------------|
+| **What the learner does** | Builds an app from scratch with GitHub Copilot | Deploys an existing OSS app via `@oss-to-azure-deployer` agent | Turns approved issues into bounded agent work, dependent PRs, checks, review, staging, and cleanup |
+| **Files generated** | README.md + PLAN.md | README.md + app-specific skill in `.github/skills/` | README.md + PLAN.md + PRODUCT.md + FACTORY.md + factory config + inert repository template |
+| **README structure** | "The Journey" with 3-5 phases (adapt to app complexity) | "Deploy with the Agent" with 3 steps (Setup → Deploy → Verify) | Full-stack structure with factory-control phases and a separate maintainer live-validation appendix |
+| **Images** | 4-6 (one per phase boundary) | 2 (hero + deployment) | 4-6 (intent, issue graph, PR stacks, review/deploy, evidence/cleanup) |
+| **Unique sections** | "The Spec", "How Agentic AI is Used", one-line default stack at first prompt | "Configuration Reference", "Key Learnings", skip rules if expensive | "Factory operating model", capability decision table, human gates, WIP limits, exact cleanup evidence |
+| **Compute target** | Container Apps, App Service, Functions, Static Web Apps, AKS | Container Apps, AKS, App Service | GitHub control plane plus the application journey's Azure target |
 
 ## Output Structure
 
@@ -48,6 +48,21 @@ journeys/<app-name>/
 ├── PLAN.md            # AI-readable spec (full-stack journeys only)
 └── images/            # Generated images (added separately)
 ```
+
+Factory journeys extend that layout without activating workflows in the curriculum repository:
+
+```text
+journeys/<app-name>-factory/
+├── README.md
+├── PLAN.md
+├── PRODUCT.md
+├── FACTORY.md
+├── factory/            # Task graph, policy, labels, checks, setup data
+├── template-repo/      # Inert files copied into the learner's private lab
+└── images/
+```
+
+Keep event-triggered workflows under `template-repo/.github/workflows/`. A setup script installs and compiles them in the private lab. Never place live factory triggers in the public curriculum repository's root `.github/workflows/`.
 
 For OSS deployment journeys, also create an app-specific skill:
 
@@ -302,6 +317,15 @@ Full-stack and from-plan static-web journeys also add:
 - **Generated-script provenance**: the README prompt must create a verifier or diagnostic before any command runs that path
 - **Deployment handoff**: use the agent plus Azure Skills for preparation and review, but have the learner run `azd up` and observe its real output
 - A cloud-agent/delegation option only when it teaches a real, self-contained asynchronous task; do not force two deployment options into every journey
+
+**Factory journeys** use the full-stack section order and teaching markers, with these additions:
+- Keep the journey self-contained. Do not call it "Journey 7" or prescribe an order.
+- Put the capability decision table before any mutating setup step. Mark each feature `Proceed`, `Simulate`, or `Blocked`.
+- Teach Issues as authorization, Projects as visible state, and sequential dependency completion against the current default branch inside a larger task graph.
+- State every human gate in execution order: immutable plan and explicit readiness gates, agent-PR workflow approval when required, review/merge, staging, cleanup recovery, and release. If a deterministic controller projects approved routine work to ready, distinguish that projection from human authorization.
+- Split secretless PR checks from privileged post-check writes. Never execute an untrusted PR head through `pull_request_target`.
+- Keep live GitHub/Azure validation in a clearly labeled maintainer appendix. The main learner path must support local/static simulation.
+- Treat cleanup and evidence read-back as part of success. Do not create a release before exact owned-resource absence is verified.
 
 For mobile frontends (iOS/Android), note in the README:
 - Backend is deployed to Azure with `azd up`; mobile app runs locally or via TestFlight / Play Store internal testing

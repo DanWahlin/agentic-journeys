@@ -1,0 +1,62 @@
+name: AIMarket Factory task
+description: Propose one bounded F0-F15 work order for immutable maintainer approval and governed readiness.
+title: "[F#] "
+labels: ["factory:proposed"]
+body:
+  - type: markdown
+    attributes:
+      value: "Issues are authoritative work orders. Never include secrets. Submission does not authorize implementation."
+  - type: input
+    id: stable-id
+    attributes:
+      label: Stable ID
+      description: F0 through F15.
+      placeholder: F0
+    validations: { required: true }
+  - type: input
+    id: parent
+    attributes: { label: Parent issue, description: "Exactly one parent issue, for example #1.", placeholder: "#1" }
+    validations: { required: true }
+  - type: textarea
+    id: dependencies
+    attributes: { label: Dependencies, description: "Stable IDs, or None.", placeholder: "F0" }
+    validations: { required: true }
+  - type: textarea
+    id: owned-paths
+    attributes: { label: Owned paths, description: "Narrow paths only; no wild-card repository ownership or reserved factory controls.", placeholder: "src/api/models/**" }
+    validations: { required: true }
+  - type: textarea
+    id: plan-headings
+    attributes: { label: Approved plan headings, description: "Exact PRODUCT.md and PLAN.md headings.", placeholder: "PRODUCT.md#catalog-contract" }
+    validations: { required: true }
+  - type: textarea
+    id: acceptance
+    attributes: { label: Acceptance commands, description: "Exact deterministic commands; not prose or agent opinion.", placeholder: "npm test -- --runInBand" }
+    validations: { required: true }
+  - type: dropdown
+    id: risk
+    attributes: { label: Risk, options: ["risk:low", "risk:medium", "risk:high", "risk:azure", "risk:security"] }
+    validations: { required: true }
+  - type: textarea
+    id: artifacts
+    attributes: { label: Expected artifacts, description: "Files and evidence expected." }
+    validations: { required: true }
+  - type: textarea
+    id: rollback
+    attributes: { label: Rollback, description: "Bounded rollback; never broaden deletion." }
+    validations: { required: true }
+  - type: textarea
+    id: budget-ttl
+    attributes: { label: Budget and TTL impact, description: "State None or bounded impact." }
+    validations: { required: true }
+  - type: textarea
+    id: prohibited
+    attributes: { label: Prohibited actions, description: "At minimum no merge, deploy, visibility, credential, or reserved-path changes." }
+    validations: { required: true }
+  - type: checkboxes
+    id: authority
+    attributes:
+      label: Human authority
+      options:
+        - label: I understand a maintainer must approve this immutable work order; only the controller or an explicit maintainer gate may later apply factory:ready.
+          required: true
