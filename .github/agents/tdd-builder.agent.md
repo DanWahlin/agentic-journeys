@@ -44,7 +44,8 @@ When asked to fix review findings (from `/review`, `/rubber-duck`, or Copilot co
 2. For each fix, write the failing tests first and commit them as a new red commit. Move the phase's red tag to that commit with `git tag -f <tag>` when the phase defines one. In a cloud agent pull request there's no tag, so check that later commits don't change tests from the latest red commit.
 3. Make them pass, run the full gate, and commit the fix as green.
 4. When the finding came from a pull request comment, reply with the commits or the reason, and resolve the thread.
-5. Never enable auto-merge. The human enables it after the Copilot review has posted and every thread is resolved.
+   In a GitHub stack (`gh stack view --json` lists the layers), commit each fix in the layer that owns the changed files: `gh stack checkout <branch>`, commit, `gh stack rebase --upstack`, `gh stack top`, then `gh stack push`. Never commit a lower layer's change on a higher layer.
+5. Never merge and never enable auto-merge. The human merges after the Copilot review has posted and every thread is resolved (`gh stack merge` for a stack layer).
 
 ## Full cycle (cloud agent)
 

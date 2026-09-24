@@ -15,7 +15,7 @@ Deploying to Azure is the easy part for an agent. Getting a result that's worth 
 - Turn an architecture diagram into GitHub issues and interview the plan with the `grill-plan` skill before any code exists
 - Drive an agent with red/green test-driven development using the `tdd-builder` custom agent, `/autopilot`, `/plan`, and `/fleet`, and prove the agent didn't change the tests
 - Gate every phase with commands that have exit codes: unit and contract tests, a black-box API verifier, iOS UI tests, and an infrastructure check
-- Ship through GitHub with worktrees, stacked pull requests, required checks, Copilot code review, and auto-merge
+- Ship three dependent phases as one stack of pull requests with GitHub Stacked PRs (`gh stack`), with required checks, Copilot code review, and a worktree for the running API
 - Ask an agent what the architecture costs and how to improve it, then deploy Azure Functions, Azure SQL with managed identity, and Microsoft Foundry with `azd`
 - Turn what worked into a reusable skill, a deterministic script that needs no AI, and a Copilot cloud agent setup for the next feature
 
@@ -27,6 +27,7 @@ Deploying to Azure is the easy part for an agent. Getting a result that's worth 
 | --- | --- | --- | --- |
 | [GitHub CLI](https://cli.github.com/) | Required | Issues, pull requests, and repository settings | `gh auth status` |
 | [Git](https://git-scm.com/downloads) 2.20 or later | Required | Branches and worktrees | `git --version` |
+| [`gh stack`](https://github.com/github/gh-stack) extension | Required | Stacked pull requests for Phases 1 to 3 | `gh stack --version` (install with `gh extension install github/gh-stack`) |
 | [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) | Required | Run the coding agent | `copilot --version` |
 | [Node.js](https://nodejs.org/en/download) LTS or later | Required | API, scripts, hooks, and the verifier | `node --version` |
 | [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools) v4 | Required | Run the API locally | `func --version` |
@@ -37,7 +38,7 @@ Deploying to Azure is the easy part for an agent. Getting a result that's worth 
 
 You also need a GitHub account and an Azure subscription. Copilot code review and the Copilot cloud agent (Phase 4) need a Copilot plan that includes them. If yours doesn't, the journey tells you what to do instead at each of those steps, and every gate still runs.
 
-Run the validation commands before Phase 0, and confirm that `az account show --output table` shows the intended subscription before Phase 3. If Xcode lists no iOS runtime, run `xcodebuild -downloadPlatform iOS` (about 8 GB). The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options.
+Also run `git config --global rerere.enabled true` so Git remembers conflict resolutions across stack rebases, and optionally install GitHub's `gh-stack` agent skill so Copilot knows the stack commands: `gh skill install github/gh-stack gh-stack --agent github-copilot --scope user`. Run the validation commands before Phase 0, and confirm that `az account show --output table` shows the intended subscription before Phase 3. If Xcode lists no iOS runtime, run `xcodebuild -downloadPlatform iOS` (about 8 GB). The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options.
 
 > [!IMPORTANT]
 > **Platform gate:** Every phase works on Windows, Mac, and Linux except running the iOS app. On Windows or Linux, you can still generate the SwiftUI app in Phase 2. The `ios` CI check runs its tests on a GitHub-hosted macOS runner.
@@ -187,10 +188,10 @@ You'll build the Azure Functions API with Node.js and TypeScript. Locally, it us
 
 ### Step 1: Grill the plan
 
-Create the branch, then start the interview in an interactive `copilot` session:
+Phases 1 to 3 are one stack of pull requests: `main ← phase-1-api ← phase-2-ios ← phase-3-azure`. Each phase's pull request shows only that phase's changes, and you can start the next phase while the last one is in review. Create the stack with its first layer, then start the interview in an interactive `copilot` session:
 
 ```text
-git switch -c phase-1-api
+gh stack init --base main phase-1-api
 ```
 
 ```
@@ -265,9 +266,15 @@ git diff --exit-code phase1-red -- src/api/test
 
 Unit tests prove the pieces. The checked-in verifier proves the running API from outside, and you didn't let the agent write it.
 
-1. In one terminal, from `src/api`, start the storage emulator with `npm run azurite`.
-2. In a second terminal, from `src/api`, run `npm run build`, then `func start`. If port 7071 is in use, use `func start --port <port>` and that port below.
-3. In a third terminal, from `journeys/smart-todo`, run:
+Run the API from its own worktree, a second checkout of the repository, so it keeps running while you move between stack layers:
+
+```text
+git worktree add --detach ../../../smart-todo-api phase-1-api
+```
+
+1. In one terminal, from `smart-todo-api/journeys/smart-todo/src/api`, copy `local.settings.example.json` to `local.settings.json`, run `npm ci`, and start the storage emulator with `npm run azurite`.
+2. In a second terminal, from the same folder, run `npm run build`, then `func start`. If port 7071 is in use, use `func start --port <port>` and that port below.
+3. In a third terminal, from `smart-todo-workspace/journeys/smart-todo`, run:
 
 ```text
 node ../../.github/scripts/verify-smart-todo.mjs --base-url http://localhost:7071
@@ -275,7 +282,7 @@ node ../../.github/scripts/verify-smart-todo.mjs --base-url http://localhost:707
 
 **Gate:** It prints `PASS: seed, validation errors, create, AI steps, auto-completion, reopen, delete, and final absence`.
 
-Leave the API running for Phase 2. Then get a review:
+Leave the API running for Phase 2. After a later fix to Phase 1, run `git checkout --detach phase-1-api` in the API worktree and restart `func start`. Then get a review:
 
 ```
 > /review Review the phase-1-api branch against PLAN-phase1-api.md and the
@@ -295,11 +302,12 @@ The agent writes each fix as a new red commit (moving the `phase1-red` tag), the
 ### Step 5: Ship through the gate 🐙
 
 ```
-> Push phase-1-api and open a pull request that closes #<api-issue>. Paste
-  the gate results into the description. Don't enable auto-merge yet.
+> Open the pull request for this stack layer with gh stack submit --auto
+  --open, then edit its description to close #<api-issue> and include the
+  gate results. Don't merge it.
 ```
 
-Watch the checks with `gh pr checks --watch`. Copilot code review posts one review a few minutes after the pull request opens (check with `gh pr view --json reviews`). **Don't enable auto-merge before it arrives**: a review comment only blocks the merge once it exists.
+Watch the checks with `gh pr checks --watch`. Copilot code review posts one review a few minutes after the pull request opens (check with `gh pr view --json reviews`). Don't merge before it arrives: a review comment only blocks the merge once it exists.
 
 Start Phase 2 while CI and review run. When the review arrives, read it, then hand it to the agent:
 
@@ -308,7 +316,14 @@ Start Phase 2 while CI and review run. When the review arrives, read it, then ha
   procedure in the "Review Triage" section of PLAN.md.
 ```
 
-Copilot reviews each pull request once, so there's no second round to wait for. Enable auto-merge with `gh pr merge --auto --squash`; the ruleset merges when every check is green and every thread is resolved.
+Copilot reviews each pull request once, so there's no second round to wait for. When every check is green and every thread is resolved, merge the layer:
+
+```text
+gh stack merge <pr-number> --yes --squash
+gh stack sync
+```
+
+`gh stack merge` evaluates the ruleset exactly like `main` would; `gh pr merge` and auto-merge can't merge a stack layer. `gh stack sync` then rebases the layers above onto the new `main`.
 
 **💡 What you're learning:** Each reviewer finds things the others miss. The tests catch contract bugs, `/review` catches gaps in the plan's rules, and Copilot code review catches things like a model parameter gpt-5-mini rejects in production. Layered review is worth it; unlimited rounds aren't, because each round finds something new in the last fix.
 
@@ -324,17 +339,14 @@ This phase starts from [mockups](./images/mockups/smart-todo-mockups.png) instea
 
 > **New to Swift?** `Codable` handles JSON like TypeScript interfaces, `async/await` works as in JavaScript, and `#if DEBUG` is a compile-time flag. XCTest runs unit tests, and XCUITest drives the app in a simulator the way a person would.
 
-### Step 1: Stack a worktree on Phase 1
+### Step 1: Add the iOS layer to the stack
 
-A worktree is a second checkout of the same repository, so Phase 2 can move forward while Phase 1 is in review. From `journeys/smart-todo`:
+From the top of the stack, add the next layer. It starts from the Phase 1 code, whether or not Phase 1 has merged:
 
 ```text
-git worktree add ../../../smart-todo-ios -b phase-2-ios phase-1-api
-cd ../../../smart-todo-ios/journeys/smart-todo
-copilot
+gh stack top
+gh stack add phase-2-ios
 ```
-
-If Phase 1 already merged, run `git fetch` first and use `origin/main` instead of `phase-1-api`. Inside Copilot CLI, `/worktree` creates a worktree without leaving the session.
 
 ### Step 2: Grill and red from the mockups
 
@@ -395,26 +407,16 @@ Computer Use lets an agent read the running app's accessibility tree and screens
 
 </details>
 
-### Step 5: Ship a stacked pull request 🐙
+### Step 5: Ship the iOS layer 🐙
 
 ```
-> Push phase-2-ios and open a pull request that closes #<ios-issue>. Use
-  phase-1-api as the base if it hasn't merged yet, otherwise main. Don't
-  enable auto-merge.
+> Open the pull request for this stack layer with gh stack submit --auto
+  --open, then edit its description to close #<ios-issue>. Don't merge it.
 ```
 
-Handle the Copilot code review with the Phase 1 triage prompt.
+The pull request's base is `phase-1-api`, so it shows only the iOS changes, and GitHub shows both pull requests as one stack. Handle the Copilot code review with the Phase 1 triage prompt. If a finding belongs to the API, the triage fixes it in the `phase-1-api` layer and rebases the iOS layer on top.
 
-A stacked pull request shows only the iOS changes. Don't enable auto-merge while its base is `phase-1-api`: that branch has no rules, so it would merge immediately into Phase 1.
-
-When Phase 1 merges, GitHub deletes `phase-1-api` and retargets this pull request to `main`. Because Phase 1 was squashed into one new commit, replay only the iOS commits onto `main`, move the red tag to the replayed red commit (`git tag -f phase2-red <commit>`), and enable auto-merge once the review threads are resolved:
-
-```text
-git fetch origin
-git rebase --onto origin/main phase-1-api
-git push --force-with-lease
-gh pr merge --auto --squash
-```
+When its review is done and its checks are green, merge it with `gh stack merge <pr-number> --yes --squash`. That also merges Phase 1 if it hasn't merged yet, but only if Phase 1 meets every rule too. Then run `gh stack sync`.
 
 ---
 
@@ -424,12 +426,11 @@ gh pr merge --auto --squash
   <img src="./images/phase3-deploy.webp" alt="Phase 3: Deploy to Azure" width="800" />
 </p>
 
-Start after Phase 1 merges. Stop the local API first (Ctrl+C): switching branches while `func start` runs from the same directory crashes the Functions host. If Phase 2 still needs a local API, start it from the `smart-todo-ios` worktree instead. Then, in your original workspace (`smart-todo-workspace/journeys/smart-todo`):
+Start once the iOS layer's pull request is open. Add the Azure layer on top of the stack:
 
 ```text
-git switch main
-git pull
-git switch -c phase-3-azure
+gh stack top
+gh stack add phase-3-azure
 azd config set auth.useAzCliAuth true
 ```
 
@@ -536,20 +537,27 @@ Use a prompt to discover how to do something, a skill to repeat it well, and a s
 ### Step 7: Ship 🐙
 
 ```
-> Commit the infrastructure, skill, and scripts. Push phase-3-azure and
-  open a pull request that closes #<azure-issue>, with the verifier's PASS
-  line in the description. Don't enable auto-merge.
+> Commit the infrastructure, skill, and scripts. Open the pull request for
+  this stack layer with gh stack submit --auto --open, then edit its
+  description to close #<azure-issue> and include the verifier's PASS line.
+  Don't merge it.
 ```
 
 The `infra` check runs `check-infra.mjs --offline`. Handle the Copilot code review with the same prompt as Phase 1; because this pull request changes `infra/`, the triage procedure also redeploys and reruns the verifier before it replies.
 
-Then enable auto-merge with `gh pr merge --auto --squash`. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
+Then merge it with `gh stack merge <pr-number> --yes --squash`, which lands any layers still below it, and run `gh stack sync --prune`. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
 
 ---
 
 ## Phase 4: Build the Factory
 
-You ran the same loop three times by hand: issue, interview, red, green, gates, review, merge. Now you'll write that loop down so the next feature runs through it without you driving every step.
+You ran the same loop three times by hand: issue, interview, red, green, gates, review, merge. Now you'll write that loop down so the next feature runs through it without you driving every step. Phase 4 uses ordinary pull requests, so start from `main` once all three stack layers have merged:
+
+```text
+git switch main
+git pull
+git switch -c phase-4-factory
+```
 
 ### Step 1: Write down the definition of done
 
@@ -606,7 +614,8 @@ Merge any small change and watch the release run end with the verifier's `PASS` 
 | Decided the ambiguous parts | The `grill-plan` skill and each plan's Decision Points |
 | Wrote tests first and kept them fixed | The `tdd-builder` custom agent |
 | Checked that it works | `ci.yml` gates and the checked-in verifier |
-| Checked that it's safe to merge | The ruleset, Copilot code review, and auto-merge |
+| Kept dependent work reviewable | A stack of pull requests (`gh stack`) |
+| Checked that it's safe to merge | The ruleset, Copilot code review, and `gh stack merge` or auto-merge |
 | Set up the agent's machine | `copilot-setup-steps.yml` |
 | Remembered how to deploy | The infrastructure skill, `scaffold-infra.mjs`, and `check-infra.mjs` |
 | Deployed | `release.yml` (optional) |
@@ -691,6 +700,10 @@ This journey was run end to end three times before publishing. Each rule below e
 | The pull request merged before Copilot code review posted | Auto-merge was on when the pull request opened. Handle the late comments in a follow-up pull request, and enable auto-merge only after the review from now on. |
 | A pull request shows "no checks reported" | It conflicts with `main`, and GitHub doesn't run workflows on a conflicting pull request. Merge `origin/main`, resolve, and push (or ask `@copilot` to). |
 | Checks never start on the cloud agent's pull request | Turn off **Require approval for workflow runs** (Settings → Copilot → Cloud agent), or run `gh run rerun <run-id>` for the run whose conclusion is `action_required`. |
+| `gh pr merge` or auto-merge fails on a stack layer | Stack layers merge with `gh stack merge <pr-number> --yes --squash`, which also merges the unmerged layers below it. |
+| A layer shows "needs rebase", or the stack merge reports a non-linear history | A lower layer or `main` moved. Run `gh stack sync`, or `gh stack rebase` and then `gh stack push`. On a conflict, resolve it and run `gh stack rebase --continue`. |
+| `gh stack submit` exits with code 9 | Stacked pull requests aren't available for the repository (the feature is in public preview). Open ordinary pull requests with the same bases, and merge them from the bottom up. |
+| The Functions host stops when you switch branches | Run the API from the detached API worktree, not the stack checkout. |
 | The ruleset exists but doesn't block merging | Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public, or continue knowing the gates don't block. |
 | The red phase fails with import or compile errors | Ask the agent for stubs that throw `Not implemented`, so tests compile and fail on assertions. |
 | `git diff --exit-code phase1-red` fails after a review fix | Commit review-driven tests as their own red commit and move the tag with `git tag -f phase1-red` before the fix. |
@@ -728,7 +741,7 @@ azd down --force --purge
 
 Confirm that `az group exists --name <resource-group-name>` returns `false`. If cleanup reports a soft-deleted Cognitive Services resource, purge it as described in [Troubleshooting](#troubleshooting).
 
-Remove the Phase 2 worktree with `git worktree remove ../../../smart-todo-ios`. If you set up the release pipeline, also delete its recorded role assignments, then the identity resource group whose name you recorded during setup, then the repository variables, as the [Release Pipeline](./PLAN-phase4-factory.md#release-pipeline-optional) cleanup describes. Keep or delete the GitHub repository as you prefer.
+Remove the API worktree with `git worktree remove ../../../smart-todo-api`. If you set up the release pipeline, also delete its recorded role assignments, then the identity resource group whose name you recorded during setup, then the repository variables, as the [Release Pipeline](./PLAN-phase4-factory.md#release-pipeline-optional) cleanup describes. Keep or delete the GitHub repository as you prefer.
 
 ---
 

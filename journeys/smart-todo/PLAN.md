@@ -40,6 +40,7 @@ The completed application has:
 - **Client:** Swift and SwiftUI for iOS 17 or later, tested with XCTest and XCUITest.
 - **Data:** Azure SQL in Azure. An in-memory store locally and in tests. Access only through repository interfaces.
 - **AI:** `gpt-5-mini` on Microsoft Foundry, with `gpt-4.1` as the regional fallback. A deterministic fake generator locally and in tests.
+- **Pull requests:** Phases 1 to 3 are one GitHub stack of pull requests, managed with `gh stack`. Phase 4 uses ordinary pull requests.
 - **Deployment:** Azure Developer CLI (`azd`) and Bicep. Prefer Azure Verified Modules, and use a raw `Microsoft.*` fallback when AVM parameter drift blocks deployment.
 - **Default region:** `westus`.
 - **API status values:** `pending`, `in_progress`, and `completed`.
@@ -142,7 +143,7 @@ The deployed app then runs the pull request's code until the next deployment, wh
 
 Generate `.github/workflows/ci.yml` at the workspace root during Phase 0, before the ruleset exists. Each job skips its work until its area exists, so the file is correct from the first commit, and `/review` in later phases doesn't report CI as missing.
 
-- Trigger on `pull_request` and on `push` to `main`.
+- Trigger on `pull_request` (for any base branch, so every layer of the stack gets checks) and on `push` to `main`.
 - Use jobs named exactly `api`, `ios`, `infra`, and `windows`. The first three are required status checks. `windows` is informational: it proves the Windows path but doesn't block merging.
 - **Every job must always run and must succeed when its area doesn't exist yet.** Don't use workflow-level `paths` filters. A required check that never reports blocks the pull request forever. Use a first step that detects whether `journeys/smart-todo/src/api`, `journeys/smart-todo/src/ios`, or `journeys/smart-todo/infra` exists, and condition the later steps on it.
 - `api` (ubuntu-latest): Use `journeys/smart-todo/src/api` as the working directory. Set up Node.js LTS with npm caching and `cache-dependency-path: journeys/smart-todo/src/api/package-lock.json`. Run `npm ci`, `npm run check`, and `npm run build`. Copy `local.settings.example.json` to `local.settings.json`, because the real file is gitignored and `func start` needs its `AzureWebJobsStorage`, `FUNCTIONS_WORKER_RUNTIME`, `DATA_PROVIDER=memory`, and `AI_PROVIDER=fake` values. Install Azure Functions Core Tools v4 with npm, start `npm run azurite` and `func start` in the background, wait until `GET /api/todos?userId=user-1` returns 200 (at most 120 seconds), and then run the checked-in verifier with `--base-url http://localhost:7071`.
@@ -161,7 +162,7 @@ Create one branch ruleset on the default branch during Phase 0:
 - Automatically request a Copilot code review on new pull requests only. Turn off review on new pushes (`review_on_push: false` in the ruleset's `copilot_code_review` rule), so fixing review comments doesn't start another review. [Review Triage](#review-triage) allows one round per pull request.
 - Block force pushes and branch deletion.
 
-Also enable auto-merge, squash merging, and automatic head-branch deletion on the repository (`gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge`). Automatic branch deletion lets GitHub retarget a stacked pull request to `main` when its base merges.
+Also enable auto-merge, squash merging, and automatic head-branch deletion on the repository (`gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge`). Stack layers merge with `gh stack merge`; auto-merge is for the ordinary pull requests in Phase 4.
 
 **Copilot code review doesn't block by itself.** Its review arrives a few minutes after a pull request opens and is a comment, not an approval or a required check. Conversation resolution only blocks once the comments exist. So never enable auto-merge when you open a pull request. Wait for the Copilot review, handle it with the [Review Triage](#review-triage) rules, and then enable auto-merge.
 
@@ -184,22 +185,33 @@ Every review finding, from `/review`, `/rubber-duck`, or Copilot code review, ge
 **Triage procedure for a pull request's review** (what "handle the review" means in the README):
 
 1. Read every review comment with the GitHub CLI.
-2. Give each one an outcome from the list above. Write fixes as the tdd-builder agent's red/green loop: failing tests in a new red commit, then the fix as a green commit. Move the phase's red tag with `git tag -f` when the phase has one; a cloud agent pull request has no tag, so its fix is checked against the latest red commit instead.
+2. Give each one an outcome from the list above. Write fixes as the tdd-builder agent's red/green loop: failing tests in a new red commit, then the fix as a green commit. Commit each fix in the layer that owns the change, and move the phase's red tag with `git tag -f` when the phase has one; a cloud agent pull request has no tag, so its fix is checked against the latest red commit instead.
 3. If a fix touched `infra/` or `src/api` and the Azure environment exists, run [Verify Before Merge](#verify-before-merge) (for `infra/`, `node scripts/check-infra.mjs` and `azd up` first, then `node infra/hooks/postprovision.js`) and paste the verifier's `PASS` line into a pull request comment.
 4. Reply to every thread with its commits, issue link, or reason, and resolve it.
-5. Push once, after every fix is committed. Don't enable auto-merge; the human does that.
+5. Push once, after every fix is committed (`gh stack push` for a stack layer). Don't merge; the human does that.
 
-## Branches and Worktrees
+## Stacked Pull Requests
 
-| Phase | Branch | Based on | Pull request base |
-| --- | --- | --- | --- |
-| 1 | `phase-1-api` | `main` | `main` |
-| 2 | `phase-2-ios` | `phase-1-api` when Phase 1 hasn't merged yet, otherwise `main` | `phase-1-api` (a stacked pull request) or `main` |
-| 3 | `phase-3-azure` | `main` after Phase 1 merges | `main` |
+Phases 1 to 3 are one **GitHub stack**, managed with the [`gh stack`](https://github.com/github/gh-stack) extension. Each phase is a layer whose pull request shows only that phase's changes, and each layer can start before the one below it merges:
 
-A stacked pull request targets `phase-1-api`, which has no rules, so don't enable auto-merge on it until it targets `main`. After Phase 1 is squash-merged and GitHub retargets the stacked pull request, replay only its own commits with `git rebase --onto origin/main phase-1-api`, then push with `--force-with-lease`.
+```text
+main ← phase-1-api ← phase-2-ios ← phase-3-azure
+```
 
-Use a separate Git worktree for work that runs in parallel. Worktrees don't share ignored files, so copy `src/api/local.settings.example.json` to `local.settings.json` and run `npm ci` in each new worktree that runs the API.
+| Phase | Create the layer | Pull request base |
+| --- | --- | --- |
+| 1 | `gh stack init --base main phase-1-api` | `main` |
+| 2 | `gh stack add phase-2-ios` (from the top of the stack) | `phase-1-api` |
+| 3 | `gh stack add phase-3-azure` (from the top of the stack) | `phase-2-ios` |
+
+- **Open pull requests with `gh stack submit --auto --open`.** It pushes every layer and creates or updates one ready-for-review pull request per layer, linked as a stack. Put `Closes #<issue>` in each pull request description.
+- **Rules apply to every layer as if it targeted `main`.** Required checks, conversation resolution, and Copilot code review run on each layer's pull request, and CI's `pull_request` trigger runs for every layer.
+- **Fix a lower layer in that layer.** Run `gh stack checkout <branch>` (or `gh stack down`), commit the fix, run `gh stack rebase --upstack` to replay the layers above it, then `gh stack top` and `gh stack push`.
+- **Merge with `gh stack merge <pr> --yes --squash`**, not `gh pr merge` or auto-merge, which can't merge a stack. It merges that pull request and every unmerged one below it, and it fails without merging anything if any of them isn't ready. Merge a layer as soon as its review is done, then run `gh stack sync` to rebase the remaining layers onto `main`.
+- **Red tags survive rebases.** `gh stack rebase` and `sync` rewrite commit IDs, so `phase1-red`, `phase2-red`, and `phase3-red` keep pointing at the original commits. The diff gates compare file contents, so they still work as long as a layer never edits another layer's test files.
+- **One checkout holds the stack.** Don't put stack layers in separate worktrees. Use a worktree only to run the local API, as a detached checkout that moving between layers doesn't disturb: `git worktree add --detach ../../../smart-todo-api phase-1-api`. Worktrees don't share ignored files, so copy `src/api/local.settings.example.json` to `local.settings.json` and run `npm ci` there. After a Phase 1 fix, refresh it with `git checkout --detach phase-1-api` in that worktree and restart the API.
+
+Stacked pull requests are in public preview. If `gh stack submit` reports that stacks aren't enabled for the repository (exit code 9), open ordinary pull requests with the same bases instead, and merge them bottom-up.
 
 ## Cross-Phase Contracts
 
