@@ -58,7 +58,7 @@ Single service only, with no `web` service. The iOS app runs on the device, not 
 
 ### Flex Consumption Configuration
 
-- **`functionAppConfig` (required):** `runtime` with `name: node` and a supported Node.js LTS `version`; `scaleAndConcurrency.instanceMemoryMB: 2048`; and `deployment.storage` of type `blobContainer` pointing at the `deploymentpackage` container URL, with `authentication.type: SystemAssignedIdentity`.
+- **`functionAppConfig` (required):** `runtime` with `name: node` and a supported Node.js LTS `version`; `scaleAndConcurrency.instanceMemoryMB: 2048` and `scaleAndConcurrency.maximumInstanceCount: 100` (Flex Consumption requires a maximum); and `deployment.storage` of type `blobContainer` pointing at the `deploymentpackage` container URL, with `authentication.type: SystemAssignedIdentity`.
 - **Runtime storage through managed identity:** Set `AzureWebJobsStorage__accountName` to the storage account name instead of a connection string. The Function App identity's `Storage Blob Data Owner` role covers it.
 - **Scaling:** Flex Consumption scales per function, except that all HTTP-triggered functions in one app scale together as the HTTP group. All SmartTodo endpoints are HTTP triggers, so they scale as one group.
 - **Always ready instances:** Optional. Set 1 for the `http` group to eliminate cold starts during demos.
@@ -66,20 +66,21 @@ Single service only, with no `web` service. The iOS app runs on the device, not 
 ### Bicep Requirements
 
 - Prefer AVM modules, but allow raw `Microsoft.*` resources when AVM blocks deployment
-- System-assigned managed identity on the Function App
+- **Two identities on the Function App.** Keep the system-assigned identity for storage (runtime and deployment package). Add a **user-assigned managed identity** (`Microsoft.ManagedIdentity/userAssignedIdentities`, named `id-sql-<resourceToken>`) that the Function App uses only for Azure SQL. Its client ID is known at deployment time, which lets the post-provision hook create the database user without looking anything up in Microsoft Entra ID, so the same hook works whether the SQL admin is a person or a service principal. Output its name and client ID as `SQL_IDENTITY_NAME` and `SQL_IDENTITY_CLIENT_ID`.
 - AI access: default path uses `AZURE_AI_KEY` with the plain `openai` SDK. Add `Cognitive Services User` only if you later switch to managed identity for AI.
 - Role assignment: `Storage Blob Data Owner` (`b7e6dc6d-f1e8-4753-8033-0f276bb0955b`) for Function App identity → Storage Account (required for Flex Consumption deployment)
 - Role assignment: `Storage Blob Data Contributor` (`ba92f5b4-2d11-453d-a403-e96b0029c9fe`) for the deploying user → Storage Account (required for `azd deploy` to upload the zip package)
-- Azure SQL: set the deploying user as Microsoft Entra admin, add a firewall rule named `AllowAzureServices` with `0.0.0.0` start/end addresses, then create a database user for the Function App identity in post-provision. Do not generate names containing Azure reserved words such as `WINDOWS`.
+- Azure SQL: set the deploying user as Microsoft Entra admin, add a firewall rule named `AllowAzureServices` with `0.0.0.0` start/end addresses, then create a database user for the SQL user-assigned identity in post-provision. Set the admin's `principalType` to `User` or `Application` to match `AZURE_PRINCIPAL_TYPE`. Do not generate names containing Azure reserved words such as `WINDOWS`.
 - Azure SQL Database: set `maxSizeBytes: 2147483648` (2 GB) when using Basic tier (default 32 GB exceeds the limit)
 - **Azure SQL Database: set `zoneRedundant: false`** — Basic tier does not support zone redundancy. AVM module may default to true, causing "ProvisioningDisabled: Provisioning of zone redundant database/pool is not supported."
-- Microsoft Foundry: use `br/public:avm/ptn/ai-ml/ai-foundry` with `baseName` (max 12 chars), `aiModelDeployments` array for gpt-5-mini, `aiFoundryConfiguration.disableLocalAuth: false`, and system-assigned managed identity
+- Microsoft Foundry: use `br/public:avm/ptn/ai-ml/ai-foundry` with `baseName` (max 12 chars), `aiModelDeployments` array for gpt-5-mini with SKU `GlobalStandard` (gpt-5-mini isn't offered as `Standard`), `aiFoundryConfiguration.disableLocalAuth: false`, and system-assigned managed identity
 - If AVM parameter drift requires raw `Microsoft.CognitiveServices` resources, create the account first and deploy the model from a separate nested Bicep module that receives the created account name. Do not issue the account and model child operations concurrently; Azure can reject the child with `RequestConflict` while the parent is non-terminal.
 - **AI model version is region-specific** — use `az cognitiveservices model list --location <region> --query "[?model.name=='gpt-5-mini']"` to find the correct version before generating Bicep. For example, `westus` requires `2025-08-07` (not `2025-02-27`).
-- Outputs in SCREAMING_SNAKE_CASE: `API_URL`, `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `RESOURCE_GROUP_NAME`
+- Outputs in SCREAMING_SNAKE_CASE: `API_URL`, `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `RESOURCE_GROUP_NAME`. `API_URL` is the site origin, `https://<defaultHostName>`, with **no** `/api` suffix; the verifier and the iOS client add `/api/...` themselves.
+- The `AZURE_SQL_SERVER` app setting comes from the server's `properties.fullyQualifiedDomainName`. Don't concatenate `environment().suffixes.sqlServerHostname`, which already starts with a dot and produces `name..database.windows.net`. The `SQL_SERVER_NAME` output may be the short name or the FQDN; the hook normalizes it to both.
 - Module parameters derived from `uniqueString()` must declare explicit `@minLength(13)`/`@maxLength(13)` constraints, and the deploying principal ID parameter must declare `@minLength(36)`/`@maxLength(36)`, so the build emits no BCP334 warnings
 - `azd-service-name: 'api'` tag on the Function App
-- Function App settings: `DATA_PROVIDER=sql`, `AI_PROVIDER=foundry`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`. `AZURE_SQL_SERVER` must be the SQL FQDN, not just the short server name.
+- Function App settings: `DATA_PROVIDER=sql`, `AI_PROVIDER=foundry`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`, and `AZURE_SQL_CLIENT_ID` (the SQL identity's client ID). `AZURE_SQL_SERVER` must be the SQL FQDN, not just the short server name.
 - **Do NOT include `FUNCTIONS_WORKER_RUNTIME` in app settings** — Flex Consumption sets this via `functionAppConfig.runtime`, and having it in app settings causes a deployment error
 - **Set `siteConfig.alwaysOn` to `false`** — the AVM module defaults to `true`, which is invalid for Flex Consumption
 - **Set Storage Account `allowSharedKeyAccess` to `false`.** The Function App and `azd deploy` use managed identity and Microsoft Entra authorization, so account keys aren't needed and would bypass them.
@@ -91,7 +92,7 @@ Single service only, with no `web` service. The iOS app runs on the device, not 
 Before provisioning, prepare the selected `azd` environment without creating any Azure resources and without running `azd up`:
 
 1. Register the `Microsoft.Web`, `Microsoft.Sql`, `Microsoft.CognitiveServices`, and `Microsoft.OperationalInsights` providers. Skip any that already report `Registered`.
-2. Resolve the subscription ID and the signed-in principal's login and object ID. Use principal type `User` for an interactive account and `ServicePrincipal` for a service principal.
+2. Resolve the subscription ID and the signed-in principal. For an interactive account, use type `User`, its sign-in name as the login, and its **object ID** as `AZURE_PRINCIPAL_ID`. For a service principal, use type `ServicePrincipal`, its display name as the login, and its **application (client) ID** as `AZURE_PRINCIPAL_ID`, because Azure SQL identifies a service principal admin by its application ID.
 3. Set `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_LOGIN`, `AZURE_PRINCIPAL_ID`, and `AZURE_PRINCIPAL_TYPE` with `azd env set`, and set `AZURE_LOCATION` to `westus` unless the learner chose another region.
 4. Read each value and pass it as a literal argument. Don't use shell command substitution, so the steps work in PowerShell, Command Prompt, bash, and zsh.
 5. If a value is unavailable, stop and report it rather than guessing or setting a placeholder.
@@ -113,6 +114,8 @@ azd env set AZURE_PRINCIPAL_TYPE User
 azd env set AZURE_LOCATION westus
 ```
 
+For a service principal, set `AZURE_PRINCIPAL_TYPE` to `ServicePrincipal`, `AZURE_PRINCIPAL_ID` to its application (client) ID, and `AZURE_PRINCIPAL_LOGIN` to its display name.
+
 ### Post-Provision: Managed Identity SQL Access
 
 Azure SQL requires a post-provision step to add the Function App's managed identity as a database user. Generate `infra/hooks/postprovision.js` and reference it directly as `hooks.postprovision` in `azure.yaml` without `shell: sh`. This repository requires Node.js LTS or later, `azd` 1.28.0+, Azure CLI, and the current Go-based `sqlcmd`; Windows, Mac, and Linux installation options are in [`../../docs/tool-installation.md`](../../docs/tool-installation.md).
@@ -121,12 +124,25 @@ Before provisioning, resolve and set the complete Entra administrator contract: 
 
 The JavaScript hook must use argument arrays, not interpolated shell commands. On Mac and Linux, invoke executables directly. On Windows, use the static PowerShell JSON-payload launcher from the `container-apps-deployment` skill for Azure CLI shims rather than passing `.cmd` files directly to `execFileSync()` or `spawnSync()`. It must:
 
-1. Fail before making Azure changes if `az`, `azd`, `node`, or `sqlcmd` is unavailable. Run these checks through the same launcher as every other command, so a Windows `az.cmd` shim is found.
+1. Fail before making Azure changes if `az`, `azd`, `node`, or `sqlcmd` is unavailable. Detect them with `az version`, `azd version`, `node --version`, and `sqlcmd --version` (`azd --version` fails). Run these checks through the same launcher as every other command, so a Windows `az.cmd` shim is found.
 2. Read `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, and `RESOURCE_GROUP_NAME` through `azd env get-value`.
 3. Normalize the SQL server to both its short name and `<name>.database.windows.net` FQDN in JavaScript.
-4. Read the server's current Azure SQL connection policy. If it is `Redirect`, temporarily change it to `Proxy` so developer-host traffic stays on port 1433 instead of redirecting to ports 11000–11999.
+4. Read the server's current Azure SQL connection policy with `az sql server conn-policy show --resource-group <rg> --server <short-name>` (these commands take `--server`, not `--name`). If it is `Redirect`, temporarily change it to `Proxy` so developer-host traffic stays on port 1433 instead of redirecting to ports 11000–11999.
 5. Obtain the developer's public IP with Node.js HTTPS/fetch, create a uniquely named temporary SQL firewall rule, and register cleanup in a `finally` block.
-6. Invoke `sqlcmd` with `--authentication-method ActiveDirectoryAzCli` to create the Function App managed-identity user and grant `db_datareader`, `db_datawriter`, and `db_ddladmin`. Escape SQL identifiers and string values before constructing the statement. `db_ddladmin` lets the API apply its own migrations at startup.
+6. Read `SQL_IDENTITY_NAME` and `SQL_IDENTITY_CLIENT_ID` through `azd env get-value`, then invoke `sqlcmd` with `--authentication-method ActiveDirectoryAzCli` to create the database user from the client ID and grant `db_datareader`, `db_datawriter`, and `db_ddladmin`. Use the SID form, which needs no directory lookup, and never `FROM EXTERNAL PROVIDER`:
+
+   ```sql
+   IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'<identity-name>')
+   BEGIN
+       DECLARE @sid varchar(34) = CONVERT(varchar(34), CAST(CAST(N'<client-id>' AS uniqueidentifier) AS varbinary(16)), 1);
+       EXEC (N'CREATE USER [<identity-name>] WITH SID = ' + @sid + N', TYPE = E;');
+   END
+   ALTER ROLE db_datareader ADD MEMBER [<identity-name>];
+   ALTER ROLE db_datawriter ADD MEMBER [<identity-name>];
+   ALTER ROLE db_ddladmin ADD MEMBER [<identity-name>];
+   ```
+
+   Validate that the client ID is a GUID and escape the identity name before building the statement. `db_ddladmin` lets the API apply its own migrations at startup. **Never fall back to SQL authentication or a password** if this step fails; stop and report the error.
 7. In `finally`, delete the temporary firewall rule and restore the original SQL connection policy even if a step fails.
 8. Print `Post-provision SQL setup complete.` only after every required step succeeds.
 
@@ -173,13 +189,14 @@ Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turn
 
 1. **Files:** `azure.yaml`, `infra/main.bicep`, `infra/main.parameters.json`, and `infra/hooks/postprovision.js` exist.
 2. **azure.yaml:** Exactly one service, named `api`, with `project: ./src/api`, `host: function`, and `language: ts`. `hooks.postprovision.run` is `./infra/hooks/postprovision.js`, and there is no `shell: sh`.
-3. **Hook:** `node --check infra/hooks/postprovision.js` passes. The hook contains no `curl`, `grep`, or `shell: true`, no top-level `import` or `export` statements, and no `--yes` argument in a `firewall-rule` command. It contains no `CREATE TABLE`, no `INSERT INTO`, and no reference to a schema SQL file, and `infra/hooks/postprovision-schema.sql` doesn't exist, because the API owns the schema. Running `node infra/hooks/postprovision.js --dry-run` with `PATH` set to only the Node.js directory exits `0` and prints `DRY RUN`, which proves dry-run needs neither Azure tools nor the `azd` environment.
+3. **Hook:** `node --check infra/hooks/postprovision.js` passes. The hook contains no `curl`, `grep`, or `shell: true`, no top-level `import` or `export` statements, and no `--yes` argument in a `firewall-rule` command. It contains `TYPE = E` and no `FROM EXTERNAL PROVIDER`, no SQL authentication (`administratorLoginPassword`, `-U`, or `--password`), no `CREATE TABLE`, no `INSERT INTO`, and no reference to a schema SQL file, and `infra/hooks/postprovision-schema.sql` doesn't exist, because the API owns the schema. Running `node infra/hooks/postprovision.js --dry-run` with `PATH` set to only the Node.js directory exits `0` and prints `DRY RUN`, which proves dry-run needs neither Azure tools nor the `azd` environment.
 4. **Build:** `az bicep build --file infra/main.bicep --stdout` exits `0`, prints valid JSON, and reports no warnings. Ignore the Bicep CLI's "a new Bicep release is available" notice, which is not a template warning.
 5. **Lint:** `az bicep lint --file infra/main.bicep` exits `0` and reports no warnings or errors.
 6. **Contract rules** on the compiled JSON. Walk the whole tree, including nested module templates. Evaluate literal values and `{ "value": ... }` parameter assignments. Ignore parameter declarations (objects with a `type` key). For ARM expressions (strings that start with `[`), search for the required literal inside the expression: child resource names compile to `format()` expressions such as `[format('{0}/{1}', ..., 'AllowAzureServices')]`, and tags built with `union()` compile to expressions too.
    - **Only deployable resource properties count.** `metadata`, outputs, variables, and comments never satisfy a rule. An agent that can't pass a rule must change the real resource or report the gap. It must not add a literal elsewhere to satisfy the check.
-   - The top-level outputs include `API_URL`, `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, and `RESOURCE_GROUP_NAME`.
-   - App setting names include `DATA_PROVIDER`, `AI_PROVIDER`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, and `AZURE_SQL_DATABASE`. No app setting is named `FUNCTIONS_WORKER_RUNTIME`.
+   - The top-level outputs include `API_URL`, `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, and `RESOURCE_GROUP_NAME`, and no output expression ends with `/api'`.
+   - App setting names include `DATA_PROVIDER`, `AI_PROVIDER`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`, and `AZURE_SQL_CLIENT_ID`.
+   - A `Microsoft.ManagedIdentity/userAssignedIdentities` resource exists, the Function App's identity type includes both `SystemAssigned` and `UserAssigned`, and the outputs include `SQL_IDENTITY_NAME` and `SQL_IDENTITY_CLIENT_ID`. No app setting is named `FUNCTIONS_WORKER_RUNTIME`.
    - Every literal `zoneRedundant` and `alwaysOn` is `false`, and every literal storage `defaultAction` is `Allow`.
    - The `FC1` SKU, a `deploymentpackage` blob container, the `azd-service-name: api` tag, and a `gpt-5-mini` or `gpt-4.1` model deployment appear.
    - A `functionAppConfig` object appears with `runtime`, `scaleAndConcurrency`, and `deployment.storage`. Where they are literals, `runtime.name` is `node`, `instanceMemoryMB` is `2048`, and the deployment storage authentication type is `SystemAssignedIdentity`. An app setting named `AzureWebJobsStorage__accountName` appears, and no app setting named `AzureWebJobsStorage` holds a connection string.

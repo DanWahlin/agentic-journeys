@@ -499,7 +499,7 @@ When it passes, deploy. Run this yourself, because it prompts for an environment
 azd up
 ```
 
-The first `azd up` must end with `Post-provision SQL setup complete.` from the hook, which creates the Function App's database user. The API creates its own tables and seed data on its first request. If the hook fails, use the "When something fails" prompt, then run `node infra/hooks/postprovision.js` directly until it prints that line. It's safe to run more than once. Afterward, only `AllowAzureServices` may remain: run `az sql server firewall-rule list --resource-group <resource-group> --server <sql-server> --query "[].name" --output tsv` with the values from `azd env get-value RESOURCE_GROUP_NAME` and `azd env get-value SQL_SERVER_NAME` (the part before the first dot).
+The first `azd up` must end with `Post-provision SQL setup complete.` from the hook, which creates the database user for the Function App's SQL identity. The API creates its own tables and seed data on its first request. If the hook fails, use the "When something fails" prompt, then run `node infra/hooks/postprovision.js` directly until it prints that line. It's safe to run more than once. Afterward, only `AllowAzureServices` may remain: run `az sql server firewall-rule list --resource-group <resource-group> --server <sql-server> --query "[].name" --output tsv` with the values from `azd env get-value RESOURCE_GROUP_NAME` and `azd env get-value SQL_SERVER_NAME` (the part before the first dot).
 
 **Gate:** The same verifier from Phase 1, now pointed at Azure:
 

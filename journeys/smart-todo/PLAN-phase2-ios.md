@@ -165,7 +165,9 @@ The `grill-plan` skill asks about each item. Use the default when the learner ha
 
 ## Test Strategy
 
-**Unit tests (`SmartTodoTests`)** use a `URLProtocol` stub and fixture JSON copied from the Phase 1 contracts. They cover at least: decoding a `Todo` with nested steps; decoding the error envelope into a `LocalizedError` message; the method, path, and body of every `APIClient` call; `deleteTodo` succeeding on `204` with an empty body; and `InMemoryAPIClient` auto-completing a todo when its last step is checked.
+**Unit tests (`SmartTodoTests`)** use a `URLProtocol` stub and fixture JSON copied from the Phase 1 contracts. They cover at least: decoding a `Todo` with nested steps; decoding the error envelope into a `LocalizedError` message; the method, path, and body of every `APIClient` call; `deleteTodo` succeeding on `204` with an empty body; and `InMemoryAPIClient` auto-completing a todo when its last step is checked. Add **parity tests** that run the Phase 1 status scenarios against `InMemoryAPIClient`: generated step titles match the fake generator in order, regenerating a completed todo sets `in_progress` and leaves other statuses alone, checking the first of two steps on a pending todo sets `in_progress`, checking the last step sets `completed`, and unchecking a step on a completed todo sets `in_progress`. A prose rule alone didn't stop the in-memory client drifting in validation runs; these tests do.
+
+Test gestures such as pull-to-refresh and swipe-to-delete through the view model's action (for example, `refresh()` or `delete(at:)`), not with XCUITest swipes, which are timing-dependent and flaky on simulators.
 
 **UI test (`SmartTodoUITests`)** launches the app with `-ui-testing` and walks the main flow:
 
