@@ -46,6 +46,8 @@ env:
 
 engine:
   id: copilot
+  version: latest
+  model: claude-sonnet-5
 
 strict: false
 sandbox:
@@ -76,6 +78,13 @@ network:
 # Journey End-to-End Test Harness
 
 You are the journey test harness. Your job is to run the selected journey in this repository end-to-end, verify it works, capture screenshots, tear down Azure resources, and produce a focused report. If the selected journey is `all`, run every journey sequentially.
+
+## Rules That Decide Pass or Fail
+
+- **Run the journey in this session.** Don't hand it to a background agent that can outlive you. If you use a sub-agent, wait for it to finish and read its result before you report.
+- **Only your own resources count.** Get the resource group and URLs only from `azd env get-value` in the environment this run created. Never inspect, reuse, or report on resource groups or apps that already existed in the subscription, even if their names look related, and never delete them.
+- **PASS needs evidence.** A journey passes only when its checked-in verifier prints its `PASS` line against this run's deployment. Report any phase you didn't finish as FAIL or PARTIAL with the reason.
+- **Print the full report to the log too**, because creating the report issue can fail (for example, when issues are disabled in a fork).
 
 ## Configuration
 
