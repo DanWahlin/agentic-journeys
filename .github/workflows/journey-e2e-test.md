@@ -232,7 +232,7 @@ mkdir -p "$JOURNEY_DIR"
 cd "$JOURNEY_DIR"
 ```
 
-**SmartTodo uses a workspace instead:** copy `journeys/smart-todo`, `.github/agents`, `.github/skills`, `.github/scripts`, and `docs` into `$JOURNEY_DIR` with the same relative paths, run `git init -b main` and commit, and run every SmartTodo command from `$JOURNEY_DIR/journeys/smart-todo`. Follow the SmartTodo notes in the journey-runner skill.
+**SmartTodo uses a workspace instead:** make sure `$JOURNEY_DIR` doesn't exist yet, set a Git identity if none is configured (`git config --global user.name journey-e2e` and `git config --global user.email journey-e2e@users.noreply.github.com`), then run `node journeys/smart-todo/setup/setup.mjs --local --workspace $JOURNEY_DIR` from the repository checkout. It copies the journey, agents, skills, scripts, and docs, and commits them on `main`. Run every SmartTodo command from `$JOURNEY_DIR/journeys/smart-todo`, and follow the SmartTodo notes in the journey-runner skill.
 
 For other full-stack journeys, copy `PLAN.md` from the repo if it exists:
 

@@ -266,8 +266,12 @@ journeys/
 │   └── PLAN.md
 ├── smart-todo/                   # Full-stack journey (iOS + Functions + AI), test-first with GitHub gates
 │   ├── README.md
-│   ├── PLAN.md                   # Vision, quality gates, CI, rulesets, branches
+│   ├── PLAN.md                   # Vision, quality gates, CI, rulesets, the pull request stack
 │   ├── PLAN-phase1-api.md … PLAN-phase4-factory.md
+│   ├── setup/                    # setup.mjs, ci.yml, ruleset.json (workspace + repository setup)
+│   ├── starter/ios/              # Starter SwiftUI app; Phase 2 builds the detail screen
+│   ├── checkpoints/              # Finished code per phase, for --start-at
+│   ├── scripts/test-ios.mjs      # iOS quality gate
 │   └── images/                   # Architecture diagram and UI mockups
 └── weather-view/                 # Static web journey (vanilla JS + Static Web Apps)
     ├── README.md

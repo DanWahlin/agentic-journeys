@@ -119,7 +119,7 @@ Steps marked 🐙 use GitHub.com features and need your own repository.
 
 **Which model?** Use a frontier model for the plan interview, the red phases, and infrastructure. Smaller models are often enough for green phases, because the tests tell them exactly when they're done. Check spending with `/usage`, and start a session with `copilot --max-ai-credits <n>` to cap it.
 
-**Without Copilot code review:** leave it out of the ruleset, and run `/review` before you open each pull request instead. Triage its findings with the same rules. Everything else is unchanged.
+**Without Copilot code review:** run the setup script with `--no-copilot-review`, and run `/review` before you open each pull request instead. Triage its findings with the same rules. Everything else is unchanged.
 
 <details>
 <summary><strong>When something fails</strong></summary>
@@ -143,43 +143,42 @@ section. Do not print secrets.
 
 </details>
 
+### Short on time? Start at a later phase
+
+Each phase takes about an hour. To start at a later one, run the setup script with `--start-at <phase>`. It puts the finished code of the earlier phases on `main` from the journey's [checkpoints](./PLAN.md#checkpoints), and every gate still applies to the phase you build. Create all the issues in Phase 0, and close the ones for phases you skipped.
+
+| Start at | Before you begin |
+| --- | --- |
+| Phase 2 | Start the stack with `gh stack init --base main phase-2-ios` instead of Step 1. To try the app, run the local API as in Phase 1 Step 4, with `main` in place of `phase-1-api`. |
+| Phase 3 | Start the stack with `gh stack init --base main phase-3-azure`. |
+| Phase 4 | Deploy first: run Phase 3 Step 4 from `main`. |
+
 ---
 
 ## Phase 0: Plan the Work
 
-### Step 1: Create the workspace
+### Step 1: Create the workspace and repository 🐙
 
-Build the app in its own workspace, which becomes its own GitHub repository and leaves this one untouched. From this repository's root, start `copilot` and run:
+The app gets its own workspace and GitHub repository, so this repository stays untouched. That setup is the same every time, so it's a script rather than a prompt. From this repository's root, run:
 
+```text
+node journeys/smart-todo/setup/setup.mjs
 ```
-> Create the SmartTodo workspace described in the "Workspace Setup" section
-  of journeys/smart-todo/PLAN.md, then show me its path and first commit.
-```
 
-End that session, change to the new workspace, and start a new session there. You'll work from this directory for the rest of the journey:
+It copies the journey into `../smart-todo-workspace`, commits it, creates a public `smart-todo` repository with CI, protects `main` with a ruleset, and waits for the first CI run. Add `--private` for a private repository (rulesets there need GitHub Pro, Team, or Enterprise), `--no-copilot-review` if your plan doesn't include Copilot code review, or `--start-at <phase>` to [start at a later phase](#short-on-time-start-at-a-later-phase). `--help` lists every option.
+
+**Gate:** The script ends with `Ruleset: active` and `CI on main: success`.
+
+From now on, nothing reaches `main`, including the agent's work, without a pull request and green checks. Start a Copilot session in the workspace; you'll work from this directory for the rest of the journey:
 
 ```text
 cd ../smart-todo-workspace/journeys/smart-todo
 copilot
 ```
 
-### Step 2: Publish and protect the repository 🐙
+**💡 What you're learning:** Setup needs no judgment, so a script does it: free, in seconds, and the same every time. You'll turn infrastructure into a script the same way in Phase 3.
 
-```
-> Generate .github/workflows/ci.yml as described in the "Continuous
-  Integration" section of PLAN.md and commit it. Then create a GitHub
-  repository named smart-todo from this workspace with the GitHub CLI and
-  push main. Make it public unless I say otherwise. Before pushing, confirm
-  that no secrets or generated files are tracked. Then apply the
-  "Repository Protection" section of PLAN.md and tell me whether the
-  ruleset is enforced.
-```
-
-**Gate:** `gh ruleset list` shows one active ruleset, and `gh run list --workflow ci.yml` shows a successful run on `main`.
-
-From now on, nothing reaches `main`, including the agent's work, without a pull request, green checks, and resolved review comments. Each CI job passes without doing anything until its part of the app exists.
-
-### Step 3: Turn the architecture into issues 🐙
+### Step 2: Turn the architecture into issues 🐙
 
 Attach the diagram and let the agent break the work down:
 
@@ -352,7 +351,7 @@ gh stack sync
   <img src="./images/phase2-ios.webp" alt="Phase 2: SwiftUI App" width="800" />
 </p>
 
-This phase starts from [mockups](./images/mockups/smart-todo-mockups.png) instead of an architecture diagram, and from a starter Xcode project in [`starter/ios`](./starter/ios) so the agent doesn't have to hand-write Xcode's project file. The tests run against an in-app fake client, so they need no running API.
+This phase starts from [mockups](./images/mockups/smart-todo-mockups.png) instead of an architecture diagram. The starter app in [`starter/ios`](./starter/ios) already has the todo list, adding a todo, the API client, and their tests, so you'll build the screen where the AI lives: the Todo Detail screen, where you generate steps and check them off. The tests run against an in-app fake client, so they need no running API.
 
 > **New to Swift?** `Codable` handles JSON like TypeScript interfaces, `async/await` works as in JavaScript, and `#if DEBUG` is a compile-time flag. XCTest runs unit tests, and XCUITest drives the app in a simulator the way a person would.
 
@@ -368,27 +367,27 @@ gh stack add phase-2-ios
 ### Step 2: Grill and red from the mockups
 
 ```
-> @images/mockups/smart-todo-mockups.png These are the SmartTodo mockups.
-  Use the grill-plan skill on issue #<ios-issue> with PLAN-phase2-ios.md,
-  and post the decisions to the issue.
+> @images/mockups/todo-detail-empty.png @images/mockups/todo-detail-steps.png
+  These are the SmartTodo detail screen mockups. Use the grill-plan skill on
+  issue #<ios-issue> with PLAN-phase2-ios.md, and post the decisions to the
+  issue.
 ```
 
 ```
 > Use the tdd-builder agent for the red phase of issue #<ios-issue>. Copy
   starter/ios to src/ios as the "Project Layout" section of
   PLAN-phase2-ios.md describes, then write the tests from its "Test
-  Strategy" section and scripts/test-ios.mjs from its "Quality Gate"
-  section. Tag the red commit phase2-red.
+  Strategy" section. Tag the red commit phase2-red.
 ```
 
-On a Mac, run `node scripts/test-ios.mjs`. The build must succeed and the tests must fail. Read the UI test and compare its steps with the mockups, and check that test fixtures match the Phase 1 [Seed Data](./PLAN-phase1-api.md#seed-data) and status rules.
+On a Mac, run `node scripts/test-ios.mjs`. The build must succeed, the starter's tests must pass, and the new ones must fail. Compare the UI test's steps with the mockups, and check that each Decision Point has a test.
 
 ### Step 3: Green
 
 ```
 > /autopilot Use the tdd-builder agent for the green phase of issue
-  #<ios-issue>. Build the views from the mockups and PLAN-phase2-ios.md
-  until "node scripts/test-ios.mjs" passes. Do not change the test targets
+  #<ios-issue>. Build the Todo Detail screen from the mockups and
+  PLAN-phase2-ios.md until "node scripts/test-ios.mjs" passes. Do not change the test targets
   or scripts/test-ios.mjs. Commit the result as a green commit.
 ```
 
@@ -430,13 +429,9 @@ Computer Use lets an agent read the running app's accessibility tree and screens
   description close #<ios-issue>. Don't merge it.
 ```
 
-The pull request's base is `phase-1-api`, so it shows only the iOS changes, and GitHub shows both pull requests as one stack. The ruleset's automatic Copilot review only fires for pull requests that target `main`, so request it for this layer yourself:
+The pull request's base is `phase-1-api`, so it shows only the iOS changes, and GitHub shows both pull requests as one stack. Phases 2 and 3 skip Copilot code review to save time; you ran the full review loop in Phase 1. To get one anyway, run `gh pr edit <pr-number> --add-reviewer @copilot` and triage it with the Phase 1 prompt.
 
-```text
-gh pr edit <pr-number> --add-reviewer @copilot
-```
-
-Triage the review with the Phase 1 prompt. If a finding belongs to the API, the triage fixes it in the `phase-1-api` layer and rebases the iOS layer on top. Then merge the layer the same way as Phase 1. If Phase 1 hasn't merged yet, `gh stack merge` merges both, as long as both meet every rule.
+When the checks are green, merge the layer the same way as Phase 1. If Phase 1 hasn't merged yet, `gh stack merge` merges both, as long as both meet every rule.
 
 ---
 
@@ -570,9 +565,7 @@ Use a prompt to discover how to do something, a skill to repeat it well, and a s
   #<azure-issue> and include the verifier's PASS line. Don't merge it.
 ```
 
-Request the Copilot review with `gh pr edit <pr-number> --add-reviewer @copilot`, and triage it with the Phase 1 prompt. Because this pull request changes `infra/`, the triage also redeploys and reruns the verifier before it replies.
-
-Merge the layer with `gh stack merge <pr-number> --yes --squash`, which also lands any layers still below it, then run `gh stack sync --prune` to delete the merged branches. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
+When the checks are green, merge the layer with `gh stack merge <pr-number> --yes --squash`, which also lands any layers still below it, then run `gh stack sync --prune` to delete the merged branches. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
 
 ---
 
@@ -682,12 +675,13 @@ The next step is a factory that runs without anyone starting it. This repository
 | Checks never start on the cloud agent's pull request | Turn off **Require approval for workflow runs** (Settings → Copilot → Cloud agent), or run `gh run rerun <run-id>` for the run whose conclusion is `action_required`. |
 | `gh pr merge` or auto-merge fails on a stack layer | Stack layers merge with `gh stack merge <pr-number> --yes --squash`, which also merges the unmerged layers below it. |
 | A layer shows "needs rebase", or the stack merge reports a non-linear history | A lower layer or `main` moved. Run `gh stack sync`, or `gh stack rebase` and then `gh stack push`. On a conflict, resolve it and run `gh stack rebase --continue`. |
-| A stack layer above the bottom never gets a Copilot review | The ruleset requests Copilot review only for pull requests whose base is `main`. Run `gh pr edit <pr-number> --add-reviewer @copilot`. Without it, the layer can merge unreviewed. |
+| You want Copilot review on the Phase 2 or Phase 3 layer | The ruleset requests it only for pull requests whose base is `main`. Run `gh pr edit <pr-number> --add-reviewer @copilot`. |
 | `gh stack submit` exits with code 9 | Stacked pull requests aren't available for the repository (the feature is in public preview). Open ordinary pull requests with the same bases, and merge them from the bottom up. |
 | The Functions host stops when you switch branches | Run the API from the detached API worktree, not the stack checkout. |
 | The ruleset exists but doesn't block merging | Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public, or continue knowing the gates don't block. |
 | The red phase fails with import or compile errors | Ask the agent for stubs that throw `Not implemented`, so tests compile and fail on assertions. |
-| `xcodebuild` can't find tests, or a new Swift file isn't compiled | Start from `starter/ios`, whose synchronized folders include every file in each target folder and whose shared scheme includes both test targets. |
+| `xcodebuild` can't find tests, or a new Swift file isn't compiled | Start from `starter/ios`, whose synchronized folders include every file in each target folder and whose shared scheme includes both test targets. Don't edit `project.pbxproj`. |
+| `setup.mjs` says the workspace already exists | Remove `../smart-todo-workspace` or pass `--workspace <path>`. For a new repository name, pass `--repo <name>`. |
 | Functions finds no functions locally | `"main"` in `package.json` must be `"dist/functions/*.js"`, and run `npm run build` before `func start`. |
 | The Function App returns 500 on database calls | The managed identity lacks database access, or `AZURE_SQL_SERVER` isn't the full `<sql-name>.database.windows.net` name. Rerun `node infra/hooks/postprovision.js` as the Microsoft Entra administrator. |
 | AI step generation returns 503 in Azure | Check that `AI_PROVIDER=foundry` and the `AZURE_AI_*` settings exist (without printing values), and that the request uses `max_completion_tokens`, not `max_tokens`. |
@@ -757,8 +751,9 @@ This journey was run end to end five times before publishing. Each rule below ex
 - **Local fakes hide production bugs.** gpt-5-mini rejected `max_tokens`, a SQL date was bound as a string, and a schema change shipped before its column existed. None of them showed up with the fake AI and the in-memory store. Hence: boundary tests and Verify Before Merge.
 - **Cleanup must survive failure.** The deployment hook left a temporary SQL firewall rule open twice, once from an unsupported flag and once from a crash right after creating it.
 - **Timing matters for the cloud agent.** An issue assigned before Phase 2 merged made the agent rebuild the iOS app, and every Swift file conflicted.
-- **Upper stack layers skipped review.** The ruleset only requests Copilot review for pull requests whose base is `main`, so the iOS and Azure layers got none until it was requested. Nothing blocked the merge. Hence: `gh pr edit --add-reviewer @copilot` for every layer above the bottom.
-- **A fix renamed a live resource.** Copilot flagged an App Service plan name that could exceed 40 characters. The first fix changed the name for every environment, and the redeploy created a second plan next to the running one. Hence: never rename a deployed resource, and read the preview for an unexpected `Create`.
+- **Building the whole iOS app took longest.** The green phase ran 48 to 88 minutes. Hence: a starter app with everything except the detail screen.
+- **Review time added up.** Triage took 15 to 30 minutes on each stack layer. Hence: one full review loop in Phase 1, and gates alone for Phases 2 and 3.
+- **A fix renamed a live resource.** A reviewer flagged an App Service plan name that could exceed 40 characters. The first fix changed the name for every environment, and the redeploy created a second plan next to the running one. Hence: never rename a deployed resource, and read the preview for an unexpected `Create`.
 - **Plan mode blocks writes.** `/fleet` launched while the session was still in plan mode; three subagents designed everything and wrote nothing.
 
 </details>

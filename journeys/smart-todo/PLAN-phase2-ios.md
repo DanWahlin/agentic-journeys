@@ -1,6 +1,6 @@
 # SmartTodo Phase 2: iOS App
 
-Build the SwiftUI client from the mockups against the API contract in [`PLAN-phase1-api.md`](./PLAN-phase1-api.md), with unit tests and a UI test that run on a simulator without the API. Read [`PLAN.md`](./PLAN.md) first for the journey vision, shared decisions, and quality gates.
+Finish the SwiftUI client by building its **Todo Detail screen** from the mockups, test-first, against the API contract in [`PLAN-phase1-api.md`](./PLAN-phase1-api.md). The starter project in `starter/ios` already contains the rest of the app and its tests, so this phase spends its time on the screen where the AI feature lives: generating steps, checking them off, and watching the todo complete. Read [`PLAN.md`](./PLAN.md) first for the journey vision, shared decisions, and quality gates.
 
 README prompts use the exact section names in this document as stable references. If a section is renamed, update its README references in the same change.
 
@@ -11,10 +11,10 @@ The wireframes in [`images/mockups/`](./images/mockups/) are the visual contract
 | File | Screen |
 | --- | --- |
 | [`smart-todo-mockups.png`](./images/mockups/smart-todo-mockups.png) | All four screens side by side |
-| [`todo-list.png`](./images/mockups/todo-list.png) | `TodoListView` with status badges, step progress, and swipe to delete |
-| [`add-todo.png`](./images/mockups/add-todo.png) | `AddTodoView` sheet with the keyboard focused |
-| [`todo-detail-empty.png`](./images/mockups/todo-detail-empty.png) | `TodoDetailView` before steps are generated |
-| [`todo-detail-steps.png`](./images/mockups/todo-detail-steps.png) | `TodoDetailView` with `ActionStepsView` and progress |
+| [`todo-list.png`](./images/mockups/todo-list.png) | `TodoListView` with status badges, step progress, and swipe to delete (in the starter) |
+| [`add-todo.png`](./images/mockups/add-todo.png) | `AddTodoView` sheet with the keyboard focused (in the starter) |
+| [`todo-detail-empty.png`](./images/mockups/todo-detail-empty.png) | `TodoDetailView` before steps are generated (**Phase 2 builds it**) |
+| [`todo-detail-steps.png`](./images/mockups/todo-detail-steps.png) | `TodoDetailView` with `ActionStepsView` and progress (**Phase 2 builds it**) |
 
 Pink notes on the mockups are behavior annotations. When a mockup and this document disagree, this document wins.
 
@@ -34,21 +34,31 @@ Paths are relative to `journeys/smart-todo`.
 src/ios/
 ├── SmartTodo.xcodeproj/
 │   └── xcshareddata/xcschemes/SmartTodo.xcscheme   # shared scheme, committed
-├── SmartTodo/            # app target: SmartTodoApp.swift, Config.swift, Models/, Services/, Views/
+├── SmartTodo/            # app target
 ├── SmartTodoTests/       # unit test target (XCTest)
 └── SmartTodoUITests/     # UI test target (XCUITest)
 ```
 
-**Start from the starter project.** Copy `starter/ios` to `src/ios` at the start of the red phase. It already has the three targets, a committed shared scheme that tests both test targets, iOS 17 as the deployment target, and the Debug settings `#if DEBUG` and `@testable import` need (`SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG`, `ENABLE_TESTABILITY = YES`). Delete `StarterView.swift`, `StarterTests.swift`, and `StarterUITests.swift` once your own files replace them.
+**Start from the starter project.** Copy `starter/ios` to `src/ios` at the start of the red phase. It has the three targets, a committed shared scheme that tests both test targets, iOS 17 as the deployment target, and the Debug settings `#if DEBUG` and `@testable import` need. It also contains the finished parts of the app, with passing tests:
+
+| Starter file | Contains |
+| --- | --- |
+| `SmartTodo/ModelsAndClients.swift` | `Config`, the models, `APIClientProtocol`, `APIClient`, and `InMemoryAPIClient` |
+| `SmartTodo/AppState.swift` | `AccessibilityIdentifiers`, `TodoStore` (load, add, update, generate, toggle, delete), `AddTodoViewModel`, and `AppDependencies` |
+| `SmartTodo/Views.swift` | `TodoListView`, the row view, and `AddTodoView` |
+| `SmartTodo/TodoDetailView.swift` | **A placeholder** that shows only the title. Phase 2 replaces it. |
+| `SmartTodoTests/` | `APIClient` request and decoding tests, `InMemoryAPIClient` parity tests, `TodoStore` tests, and the shared `MockAPIClient` in `TestSupport.swift` |
+| `SmartTodoUITests/SmartTodoListUITests.swift` | The seeded list and adding a todo |
+
+Phase 2 adds `SmartTodo/TodoDetailViewModel.swift`, replaces `SmartTodo/TodoDetailView.swift` with `TodoDetailView` and `ActionStepsView`, and adds their tests. Call the existing `TodoStore` and `APIClientProtocol`; don't change the starter's other files unless a test proves a bug in them.
 
 The project uses Xcode's synchronized folders, so every file inside `SmartTodo/`, `SmartTodoTests/`, or `SmartTodoUITests/` (including subfolders) belongs to that target automatically. **Don't edit `project.pbxproj`** to add files, and don't convert the project to an older format. Hand-written project files were the slowest and most error-prone step in earlier runs. Name every XCTest method with a `test` prefix; XCTest silently skips methods without it.
 
-### Config
+### Config (in the starter)
 
-App Transport Security already allows plain HTTP to `localhost`, so the Debug build reaches `http://localhost:7071` without an ATS exception. Don't add one, even if a reviewer suggests it.
+`Config` is at the top of `SmartTodo/ModelsAndClients.swift`. App Transport Security already allows plain HTTP to `localhost`, so the Debug build reaches `http://localhost:7071` without an ATS exception. Don't add one, even if a reviewer suggests it.
 
 ```swift
-// Config.swift
 enum Config {
     #if DEBUG
     static let apiBaseURL = "http://localhost:7071"
@@ -64,11 +74,11 @@ The API URL must be configurable, never hardcoded in a view or service. Use `#if
 
 **To test against the deployed Azure API:** The simplest approach is to replace the `apiBaseURL` value directly (removing the `#if DEBUG` / `#else` / `#endif` conditional) with your deployed Function App URL. Get the URL with `azd env get-value API_URL`. You can restore the conditional later.
 
-### Models
+### Models (in the starter)
 
-Create Swift `Codable` + `Identifiable` models that match the API `Todo`, `ActionStep`, and `{ error: { code, message } }` shapes exactly.
+Swift `Codable` + `Identifiable` models that match the API `Todo`, `ActionStep`, and `{ error: { code, message } }` shapes exactly.
 
-### API Client
+### API Client (in the starter)
 
 ```swift
 protocol APIClientProtocol {
@@ -87,13 +97,13 @@ protocol APIClientProtocol {
 - `InMemoryAPIClient` must behave exactly like the Phase 1 API: the same seed data, the fake generator's four step titles in order, and the same status rules for step toggles and regeneration (including Decision Points 2 and 3). Omit `nil` optional fields from request bodies rather than encoding them as JSON `null`, because the API treats a present `null` as a change. `InMemoryAPIClient` implements the same protocol and is used for SwiftUI previews and UI tests.
 - Views receive the client through the SwiftUI environment or an initializer, never through a global singleton.
 
-### UI Test Mode
+### UI Test Mode (in the starter)
 
 When the app launches with the argument `-ui-testing`, it uses `InMemoryAPIClient` instead of `APIClient`. UI tests are then deterministic and need no running API.
 
 ### Views
 
-#### TodoListView (main screen)
+#### TodoListView (in the starter)
 
 - Status badges never wrap mid-word: use `lineLimit(1)` and `fixedSize()`, and use `ViewThatFits` to stack the badge above the step count at accessibility text sizes.
 
@@ -105,14 +115,17 @@ When the app launches with the argument `-ui-testing`, it uses `InMemoryAPIClien
 - Pull to refresh with `.refreshable`
 - Empty state: "No todos yet. Tap + to add one."
 
-#### AddTodoView (presented as sheet)
+#### AddTodoView (in the starter)
 
 - Text field for todo title with placeholder "What do you want to accomplish?"
 - "Add" button (disabled if title is empty or whitespace-only)
 - "Cancel" button to dismiss
 - Keyboard auto-focused on appear with `.onAppear { isFocused = true }`
 
-#### TodoDetailView
+#### TodoDetailView (Phase 2 builds it)
+
+Use a `TodoDetailViewModel` (`@MainActor`, `ObservableObject`) that owns the displayed todo, calls `TodoStore` and its client, and exposes `progressLabel`, `isGenerating`, and `shouldDismiss`, so the tests can drive every behavior without the UI.
+
 
 - Todo title displayed as editable `TextField`
 - Status picker: `Picker` with `pending`, `in_progress`, `completed` options
@@ -124,7 +137,7 @@ When the app launches with the argument `-ui-testing`, it uses `InMemoryAPIClien
 - "Delete Todo" button at bottom (destructive style, with confirmation alert)
 - Wrap the view in a `ScrollView`, or use `Form`/`List`, so the generate button, action steps, and delete button are reachable however many steps are generated
 
-#### ActionStepsView
+#### ActionStepsView (Phase 2 builds it)
 
 - Progress bar at top: `ProgressView(value: completedCount, total: totalCount)` with label "N of M complete"
 - Ordered list of steps sorted by `order`. It must scroll so all 7 steps are visible. Do NOT use a fixed-height container that clips at 5 items.
@@ -157,38 +170,40 @@ The `grill-plan` skill asks about each item. Use the default when the learner ha
 
 | # | Question | Why it matters | Default |
 | --- | --- | --- | --- |
-| 1 | How are API errors shown? | Errors must be visible, but not block the list. | An alert with the error message and an OK button. |
-| 2 | When a step checkbox is tapped, does the UI update before or after the API responds? | Optimistic updates feel faster but must roll back on failure. | Wait for the API response, then update. Disable that checkbox while the request is in flight. |
-| 3 | After a step toggle, how does the app learn the todo's new status? | The API changes the parent status on the server. | Reload the todo list after each toggle. |
+| 1 | When is an edited title saved? | Saving on every keystroke floods the API; a blank title isn't valid. | On Return. A blank or whitespace-only title isn't sent, and the field restores the saved title. |
+| 2 | Does changing the status need a Save button? | Two ways to save confuse people. | No. Save immediately. If the API fails, restore the last saved status and show the error. |
+| 3 | Does Regenerate Steps ask for confirmation first? | Regenerating replaces steps the person may have checked. | No. Regenerate immediately; the button's label ("Regenerate Steps") says what it does. |
+| 4 | When does Delete Todo leave the screen? | Leaving before the API confirms hides a failed delete. | Only after the API succeeds. On failure, stay on the screen and show the error. |
+
+The starter already settled three earlier questions, and Phase 2 keeps them: API errors appear as an alert with an OK button (`TodoStore.present`), a step checkbox waits for the API and is disabled while its request is in flight, and the list reloads after each toggle so the parent todo's status comes from the server.
 
 ---
 
 ## Test Strategy
 
-**Unit tests (`SmartTodoTests`)** use a `URLProtocol` stub and fixture JSON copied from the Phase 1 contracts. They cover at least: decoding a `Todo` with nested steps; decoding the error envelope into a `LocalizedError` message; the method, path, and body of every `APIClient` call; `deleteTodo` succeeding on `204` with an empty body; and `InMemoryAPIClient` auto-completing a todo when its last step is checked. Add **parity tests** that run the Phase 1 status scenarios against `InMemoryAPIClient`: generated step titles match the fake generator in order, regenerating a completed todo sets `in_progress` and leaves other statuses alone, checking the first of two steps on a pending todo sets `in_progress`, checking the last step sets `completed`, and unchecking a step on a completed todo sets `in_progress`. A prose rule alone didn't stop the in-memory client drifting in validation runs; these tests do.
+The starter's tests already cover the API client, `InMemoryAPIClient` parity with the Phase 1 status rules, and `TodoStore`. Phase 2's red phase adds:
 
-Test gestures such as pull-to-refresh and swipe-to-delete through the view model's action (for example, `refresh()` or `delete(at:)`), not with XCUITest swipes, which are timing-dependent and flaky on simulators.
+**Unit tests (`SmartTodoTests`)** for `TodoDetailViewModel`, using the starter's `MockAPIClient`:
+
+- Each Decision Point above, including the failure paths (a failed title or status update restores the saved value and shows the error; a failed delete stays on the screen).
+- Generating steps sets `isGenerating` while the request is in flight and clears it afterward, even on failure.
+- Generated steps are shown sorted by `order`, and `progressLabel` reads "N of M complete".
+- Toggling a step updates the displayed todo from the reloaded list, so an auto-completed parent shows `completed`.
+- Seven generated steps stay reachable (`TodoDetailLayout.supportsScrolling`, or an equivalent layout contract).
 
 **UI test (`SmartTodoUITests`)** launches the app with `-ui-testing` and walks the main flow:
 
 1. The list shows the three seed todos.
 2. Add "Plan a weekend camping trip" and see it in the list with a `pending` badge.
 3. Open it, tap `generateStepsButton`, and see four steps and "0 of 4 complete".
-4. Check every step and see "4 of 4 complete".
+4. Check every step and see "4 of 4 complete". Wait for each checkbox's request to finish before tapping the next one.
 5. Go back and see a `completed` badge on the new todo.
 
-**Red phase:** Add only the protocol, stub types, and accessibility identifiers the tests need to compile. Commit the tests and tag the commit `phase2-red`. When review findings add tests later, commit them as a new red commit and move the tag with `git tag -f phase2-red`.
+**Red phase:** Add only the stub types the tests need to compile, such as a `TodoDetailViewModel` whose methods do nothing. Commit the tests and tag the commit `phase2-red`. When review findings add tests later, commit them as a new red commit and move the tag with `git tag -f phase2-red`.
 
 ## Quality Gate
 
-Generate `scripts/test-ios.mjs`, a Node.js script with no dependencies. Resolve paths relative to the project directory (the parent of `scripts/`), not the current working directory, so CI can run it from the repository root:
-
-1. On anything other than macOS, print `SKIP: iOS tests require macOS and Xcode` and exit `0`.
-2. On macOS, fail with an install hint if `xcodebuild` or `xcrun` is missing.
-3. Read `xcrun simctl list devices available --json`, pick an available iPhone on the newest iOS runtime, and print its name and runtime.
-4. Run `xcodebuild test -project src/ios/SmartTodo.xcodeproj -scheme SmartTodo -destination id=<udid>` with argument arrays, not a shell string.
-5. Exit with `xcodebuild`'s exit code and print the test summary line.
-6. When `xcodebuild` fails, also print every compiler `error:` line (file, line, and message) and every failed test name. Without them, the CI log shows only "build failed", and neither the reviewer nor the cloud agent can see why.
+`scripts/test-ios.mjs` is checked in with the journey. It skips on anything other than macOS, picks an available iPhone simulator on the newest iOS runtime, runs `xcodebuild test` on the shared scheme, and prints every compiler `error:` line and failed test name when the run fails. Don't change it.
 
 The Phase 2 gate passes when `node scripts/test-ios.mjs` exits `0` on a Mac and `git diff --exit-code phase2-red -- scripts/test-ios.mjs src/ios/SmartTodoTests src/ios/SmartTodoUITests` exits `0`. The `ios` CI job runs the script on a macOS runner.
 
@@ -203,10 +218,9 @@ Computer Use is not a gate. Its results vary between runs, and it needs Screen R
 ## Phase 2 Acceptance Criteria
 
 - `src/ios` started from `starter/ios`, its `project.pbxproj` is unchanged, and the committed shared scheme still tests both test targets.
-- Swift models match the Phase 1 `Todo`, `ActionStep`, and error contracts exactly.
-- `APIClient` centralizes all network calls, uses `Config.apiBaseURL`, and handles `204 No Content` on delete.
-- Views match the mockups and use the accessibility identifiers in this plan.
-- Todo list, add, detail, generate/regenerate steps, progress, and completion flows work against the local API.
+- The starter's files other than `TodoDetailView.swift` are unchanged, unless a new test proved a bug in them.
+- `TodoDetailView` and `ActionStepsView` match the detail mockups and use the accessibility identifiers in this plan.
+- The generate, regenerate, check-off, progress, and completion flows work against the local API.
 - Generate and regenerate buttons use the Form-safe `HStack` icon pattern and show a loading state during AI generation.
 - The Decision Points answers are recorded on the issue and covered by tests.
 - The [Quality Gate](#quality-gate) passes on a Mac, and the `ios` check is green on the pull request.

@@ -1,0 +1,189 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect API
+        id: api
+        run: echo "exists=$([[ -d journeys/smart-todo/src/api ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        if: steps.api.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: journeys/smart-todo/src/api/package-lock.json
+
+      - name: Install dependencies
+        if: steps.api.outputs.exists == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: npm ci
+
+      - name: Check
+        if: steps.api.outputs.exists == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: npm run check
+
+      - name: Build
+        if: steps.api.outputs.exists == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: npm run build
+
+      - name: Install Azure Functions Core Tools
+        if: steps.api.outputs.exists == 'true'
+        run: npm install --global azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Start API and verify
+        if: steps.api.outputs.exists == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: |
+          cp local.settings.example.json local.settings.json
+          npm run azurite > /tmp/azurite.log 2>&1 &
+          func start > /tmp/func.log 2>&1 &
+
+          ready=false
+          for attempt in {1..120}; do
+            if curl --silent --fail --output /dev/null \
+              "http://localhost:7071/api/todos?userId=user-1"; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+
+          if [[ "$ready" != true ]]; then
+            cat /tmp/azurite.log
+            cat /tmp/func.log
+            exit 1
+          fi
+
+          node ../../../../.github/scripts/verify-smart-todo.mjs \
+            --base-url http://localhost:7071
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect iOS project
+        id: ios
+        run: echo "exists=$([[ -d journeys/smart-todo/src/ios/SmartTodo.xcodeproj ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Test iOS
+        if: steps.ios.outputs.exists == 'true'
+        run: node journeys/smart-todo/scripts/test-ios.mjs
+
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect infrastructure
+        id: infra
+        run: echo "exists=$([[ -d journeys/smart-todo/infra ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Bicep
+        if: steps.infra.outputs.exists == 'true'
+        run: az bicep install
+
+      - name: Check infrastructure
+        if: steps.infra.outputs.exists == 'true'
+        run: node journeys/smart-todo/scripts/check-infra.mjs --offline
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect areas
+        id: areas
+        run: |
+          "api=$(if (Test-Path journeys/smart-todo/src/api -PathType Container) { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+          "infra=$(if (Test-Path journeys/smart-todo/infra -PathType Container) { 'true' } else { 'false' })" >> $env:GITHUB_OUTPUT
+
+      - name: Set up Node.js
+        if: steps.areas.outputs.api == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: journeys/smart-todo/src/api/package-lock.json
+
+      - name: Install API dependencies
+        if: steps.areas.outputs.api == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: npm ci
+
+      - name: Check API
+        if: steps.areas.outputs.api == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: npm run check
+
+      - name: Build API
+        if: steps.areas.outputs.api == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: npm run build
+
+      - name: Install Azure Functions Core Tools
+        if: steps.areas.outputs.api == 'true'
+        run: npm install --global azure-functions-core-tools@4 --unsafe-perm true
+
+      - name: Start API and verify
+        if: steps.areas.outputs.api == 'true'
+        working-directory: journeys/smart-todo/src/api
+        run: |
+          Copy-Item local.settings.example.json local.settings.json
+          Start-Process npm.cmd -ArgumentList "run", "azurite" -NoNewWindow
+          Start-Process func.cmd -ArgumentList "start" -NoNewWindow
+
+          $ready = $false
+          foreach ($attempt in 1..120) {
+            try {
+              $response = Invoke-WebRequest `
+                -Uri "http://localhost:7071/api/todos?userId=user-1" `
+                -UseBasicParsing `
+                -TimeoutSec 2
+              if ($response.StatusCode -eq 200) {
+                $ready = $true
+                break
+              }
+            } catch {
+              Start-Sleep -Seconds 1
+            }
+          }
+
+          if (-not $ready) {
+            throw "The API did not become ready within 120 seconds."
+          }
+
+          node ../../../../.github/scripts/verify-smart-todo.mjs `
+            --base-url http://localhost:7071
+
+      - name: Set up Azure Developer CLI
+        if: steps.areas.outputs.infra == 'true'
+        uses: Azure/setup-azd@v2
+
+      - name: Check Windows post-provision hook
+        if: steps.areas.outputs.infra == 'true'
+        run: |
+          $output = node journeys/smart-todo/infra/hooks/postprovision.js --dry-run 2>&1 | Out-String
+          Write-Host $output
+          if ($output -match '(?i)\b(?:az|azd)\b.*\bMISSING\b') {
+            throw "The post-provision hook reported az or azd as MISSING."
+          }

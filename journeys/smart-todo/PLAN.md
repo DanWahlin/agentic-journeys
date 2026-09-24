@@ -49,12 +49,33 @@ The completed application has:
 
 ## Workspace Setup
 
-Create the learner's workspace in a sibling directory named `smart-todo-workspace` next to the journeys repository. Stop and ask before changing anything if that directory already exists and isn't empty. Don't modify the journeys repository.
+`setup/setup.mjs` creates the learner's workspace and repository. It's a checked-in Node.js script with no dependencies, because this step is the same every time. Run it from the journeys repository root:
 
-1. Copy these directories into the workspace, keeping their paths: `journeys/smart-todo`, `.github/agents`, `.github/skills`, `.github/scripts`, and `docs`.
-2. Initialize a Git repository on a `main` branch at the workspace root.
-3. Add a root `.gitignore` that excludes secrets and generated files: `.env` and `.env.*` (but allow `.env.example`), `.azure/`, `local.settings.json`, `node_modules/`, `dist/`, `build/`, `coverage/`, `.azurite/`, and the Xcode artifacts `*.xcuserstate`, `xcuserdata/`, and `DerivedData/`.
-4. Commit everything as `Initial SmartTodo workspace`.
+```text
+node journeys/smart-todo/setup/setup.mjs
+```
+
+It does the following, and stops before changing anything if the workspace directory already exists and isn't empty:
+
+1. Copies `journeys/smart-todo` (without `checkpoints/` and `setup/`), `.github/agents`, `.github/skills`, `.github/scripts`, and `docs` into `../smart-todo-workspace`, keeping their paths.
+2. Adds `setup/ci.yml` as `.github/workflows/ci.yml`, and a root `.gitignore` that excludes secrets and generated files: `.env` and `.env.*` (but allows `.env.example`), `.azure/`, `local.settings.json`, `node_modules/`, `dist/`, `build/`, `coverage/`, `.azurite/`, and the Xcode artifacts `*.xcuserstate`, `xcuserdata/`, and `DerivedData/`.
+3. Initializes Git on `main` and commits everything as `Initial SmartTodo workspace`.
+4. With `--start-at <phase>`, adds the earlier phases from [Checkpoints](#checkpoints) as a second commit.
+5. Unless `--local` is given, creates the GitHub repository (public unless `--private`), pushes `main`, enables auto-merge, squash merging, and head-branch deletion, creates the `phase-1`, `phase-2`, `phase-3`, and `known-limitation` labels, applies `setup/ruleset.json` as described in [Repository Protection](#repository-protection) (`--no-copilot-review` leaves that rule out), and waits for the first CI run on `main`.
+
+It prints the ruleset's enforcement and the CI result, and exits non-zero if CI didn't succeed. Run it with `--help` for every option.
+
+## Checkpoints
+
+`checkpoints/phase-1`, `phase-2`, and `phase-3` hold the finished code of each phase from a validation run, so a learner can start at any phase with `setup.mjs --start-at <phase>`:
+
+| Start at | Applied checkpoints | What's already on `main` |
+| --- | --- | --- |
+| 2 | `phase-1` | The API and its tests |
+| 3 | `phase-1`, `phase-2` (on top of `starter/ios`) | The API and the finished iOS app |
+| 4 | `phase-1` to `phase-3` | The API, the iOS app, the infrastructure, the gates, and the infrastructure skill |
+
+Each checkpoint mirrors `journeys/smart-todo` under `journey/`, and the workspace root under `repo/`. They pass the same gates as the phases that produced them. The setup script doesn't copy `checkpoints/` into the workspace, so agents can't copy the answers. When a phase plan changes, regenerate its checkpoint from a validation run.
 
 ## Target Project Structure
 
@@ -74,7 +95,7 @@ smart-todo-workspace/
     ├── starter/ios/                   # starter Xcode project copied into src/ios in Phase 2
     ├── src/api/                       # Azure Functions API + tests
     ├── src/ios/                       # SwiftUI app + tests
-    ├── scripts/                       # test-ios.mjs, check-infra.mjs, scaffold-infra.mjs
+    ├── scripts/                       # test-ios.mjs (checked in), check-infra.mjs, scaffold-infra.mjs
     ├── infra/                         # Bicep and portable deployment hooks
     └── azure.yaml
 ```
@@ -83,9 +104,9 @@ smart-todo-workspace/
 
 | Journey phase | Detailed plan | Outcome |
 | --- | --- | --- |
-| Phase 0: Plan the work | This document and [`images/architecture.png`](./images/architecture.png) | Repository, CI workflow, protected `main`, and one GitHub issue per phase |
+| Phase 0: Plan the work | This document and [`images/architecture.png`](./images/architecture.png) | Repository, CI workflow, and protected `main` from `setup.mjs`, and one GitHub issue per phase |
 | Phase 1: Build the API test-first | [`PLAN-phase1-api.md`](./PLAN-phase1-api.md) | Models, repositories, REST endpoints, seed data, AI decomposition, tests, and the first CI checks |
-| Phase 2: Build the iOS app from mockups | [`PLAN-phase2-ios.md`](./PLAN-phase2-ios.md) | SwiftUI app, API client, unit tests, UI test, and the `ios` check |
+| Phase 2: Build the iOS app from mockups | [`PLAN-phase2-ios.md`](./PLAN-phase2-ios.md) | The Todo Detail screen, test-first, on a starter app that already has the list, the API client, and their tests |
 | Phase 3: Deploy to Azure with gates | [`PLAN-phase3-azure.md`](./PLAN-phase3-azure.md) | Cost review, infrastructure gate, Flex Consumption deployment, a reusable skill, and a scaffold script |
 | Phase 4: Build the factory | [`PLAN-phase4-factory.md`](./PLAN-phase4-factory.md) | Definition of done, cloud agent environment, and an issue delivered by the cloud agent |
 
@@ -141,7 +162,7 @@ The deployed app then runs the pull request's code until the next deployment, wh
 
 ## Continuous Integration
 
-Generate `.github/workflows/ci.yml` at the workspace root during Phase 0, before the ruleset exists. Each job skips its work until its area exists, so the file is correct from the first commit, and `/review` in later phases doesn't report CI as missing.
+The workflow is checked in as `setup/ci.yml`, and `setup.mjs` installs it as `.github/workflows/ci.yml` before the ruleset exists. Each job skips its work until its area exists, so the file is correct from the first commit. It follows these rules; keep them when you change it:
 
 - Trigger on `pull_request` (for any base branch, so every layer of the stack gets checks) and on `push` to `main`.
 - Use jobs named exactly `api`, `ios`, `infra`, and `windows`. The first three are required status checks. `windows` is informational: it proves the Windows path but doesn't block merging.
@@ -154,15 +175,15 @@ Generate `.github/workflows/ci.yml` at the workspace root during Phase 0, before
 
 ## Repository Protection
 
-Create one branch ruleset on the default branch during Phase 0:
+`setup.mjs` applies `setup/ruleset.json`, one branch ruleset on the default branch:
 
 - Require a pull request before merging, with 0 required approvals. The learner authors most pull requests and can't approve their own. Phase 4 explains when to raise this.
 - Require conversation resolution before merging, so unresolved Copilot code review comments block the merge.
 - Require the status checks `api`, `ios`, and `infra`. Don't require branches to be up to date, because auto-merge doesn't update branches for you.
-- Automatically request a Copilot code review on new pull requests only. Turn off review on new pushes (`review_on_push: false` in the ruleset's `copilot_code_review` rule), so fixing review comments doesn't start another review. [Review Triage](#review-triage) allows one round per pull request.
+- Automatically request a Copilot code review on new pull requests only. Turn off review on new pushes (`review_on_push: false` in the ruleset's `copilot_code_review` rule), so fixing review comments doesn't start another review. [Review Triage](#review-triage) allows one round per pull request. The rule only fires for pull requests whose base is `main`: the Phase 1 layer and the Phase 4 pull requests.
 - Block force pushes and branch deletion.
 
-Also enable auto-merge, squash merging, and automatic head-branch deletion on the repository (`gh repo edit --enable-auto-merge --enable-squash-merge --delete-branch-on-merge`). Stack layers merge with `gh stack merge`; auto-merge is for the ordinary pull requests in Phase 4.
+It also enables auto-merge, squash merging, and automatic head-branch deletion on the repository. Stack layers merge with `gh stack merge`; auto-merge is for the ordinary pull requests in Phase 4.
 
 **Copilot code review doesn't block by itself.** Its review arrives a few minutes after a pull request opens and is a comment, not an approval or a required check. Conversation resolution only blocks once the comments exist. So never enable auto-merge when you open a pull request. Wait for the Copilot review, handle it with the [Review Triage](#review-triage) rules, and then enable auto-merge.
 
@@ -178,7 +199,9 @@ Every review finding, from `/review`, `/rubber-duck`, or Copilot code review, ge
 2. **Known limitation:** Real issues outside this phase's scope become a GitHub issue labeled `known-limitation`, with the finding and a one-line suggested fix. Reply to the comment with the issue link and resolve the thread.
 3. **Decline:** Findings that are wrong or conflict with the plan get a reply that cites the plan section. Resolve the thread.
 
-**One round per pull request.** Copilot reviews a pull request once, when it opens or, for an upper stack layer, when you request it (the ruleset doesn't review new pushes). Fix everything in that round with one push. If you request another review, file anything it finds as `known-limitation` issues instead of fixing it in the same pull request. Validation runs showed that each extra round finds something new in the previous fix and costs more than the fix itself.
+**Which pull requests get Copilot review.** Phase 1 and every Phase 4 pull request. The Phase 2 and Phase 3 layers skip it to save time: their gates are the same kind you've already seen reviewed, and one full review loop teaches the procedure. Request one with `gh pr edit <pr> --add-reviewer @copilot` if you want it. If Copilot reviews an upper layer anyway, triage it the same way.
+
+**One round per pull request.** Copilot reviews a pull request once, when it opens (the ruleset doesn't review new pushes). Fix everything in that round with one push. If you request another review, file anything it finds as `known-limitation` issues instead of fixing it in the same pull request. Validation runs showed that each extra round finds something new in the previous fix and costs more than the fix itself.
 
 **Problems you hit and fixed** during a phase go in the pull request description under a "Problems and fixes" heading, so they're recorded without a file that every branch edits.
 
@@ -207,7 +230,7 @@ main ← phase-1-api ← phase-2-ios ← phase-3-azure
 - **Open pull requests with `gh stack submit --auto --open`.** It pushes every layer and creates or updates one ready-for-review pull request per layer, linked as a stack. Put `Closes #<issue>` in each pull request description.
 - **Titles become commits.** `submit --auto` titles each pull request from its branch name (`phase 1 api`), and the squash merge uses that title as the commit message. Retitle each one (`Phase 1: API`) when you open it.
 - **Merge rules apply to every layer as if it targeted `main`.** Required checks and conversation resolution are evaluated against `main` for every layer, and CI's `pull_request` trigger runs for every layer.
-- **Request Copilot review for every layer above the bottom.** The ruleset's automatic Copilot review fires only for pull requests whose base is `main`, so layers 2 and 3 get no review on open. Run `gh pr edit <pr> --add-reviewer @copilot` right after `submit`. Copilot review doesn't block by itself, so a layer without it can merge unreviewed.
+- **Only the bottom layer gets Copilot review automatically.** The ruleset requests it only for pull requests whose base is `main`. The journey reviews Phase 1 and skips the review on Phases 2 and 3 (see [Review Triage](#review-triage)); request one with `gh pr edit <pr> --add-reviewer @copilot` if you want it. Copilot review doesn't block by itself, so an unreviewed layer can merge once its checks pass.
 - **Fix a lower layer in that layer.** Run `gh stack checkout <branch>` (or `gh stack down`), commit the fix, run `gh stack rebase --upstack` to replay the layers above it, then `gh stack top` and `gh stack push`.
 - **Merge with `gh stack merge <pr> --yes --squash`**, not `gh pr merge` or auto-merge, which can't merge a stack. It merges that pull request and every unmerged one below it, and it fails without merging anything if any of them isn't ready. Merge a layer as soon as its review is done, then run `gh stack sync` to rebase the remaining layers onto `main`.
 - **Red tags survive rebases.** `gh stack rebase` and `sync` rewrite commit IDs, so `phase1-red`, `phase2-red`, and `phase3-red` keep pointing at the original commits. The diff gates compare file contents, so they still work as long as a layer never edits another layer's test files.
