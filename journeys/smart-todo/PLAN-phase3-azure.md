@@ -12,7 +12,7 @@ Before any Bicep exists, the agent reviews this plan read-only and returns:
 2. **Improvements:** Up to five changes across security, reliability, cost, and operations. For each, give the benefit, the monthly cost impact, the effort, and a recommendation of `adopt now` or `later`.
 3. **Risks:** Anything in this plan likely to fail in the learner's region or subscription.
 
-The review must not change files. The learner decides which improvements to adopt. An adopted improvement is added to this plan before the infrastructure is generated, because this plan is the contract that the generation, the gate, and the review all bind to. Record the decisions as a comment on the Phase 3 issue.
+The review returns its results in the chat only. It must not change files, post comments, or edit issues. The learner decides which improvements to adopt. An adopted improvement is added to this plan before the infrastructure is generated, because this plan is the contract that the generation, the gate, and the review all bind to. After the learner decides, a separate step posts the estimate and the decisions as one comment on the Phase 3 issue.
 
 ## Azure Deployment
 
@@ -75,10 +75,12 @@ Single service only, with no `web` service. The iOS app runs on the device, not 
 - **Azure SQL Database: set `zoneRedundant: false`** — Basic tier does not support zone redundancy. AVM module may default to true, causing "ProvisioningDisabled: Provisioning of zone redundant database/pool is not supported."
 - Microsoft Foundry: use `br/public:avm/ptn/ai-ml/ai-foundry` with `baseName` (max 12 chars), `aiModelDeployments` array for gpt-5-mini with SKU `GlobalStandard` (gpt-5-mini isn't offered as `Standard`), `aiFoundryConfiguration.disableLocalAuth: false`, and system-assigned managed identity
 - If AVM parameter drift requires raw `Microsoft.CognitiveServices` resources, create the account first and deploy the model from a separate nested Bicep module that receives the created account name. Do not issue the account and model child operations concurrently; Azure can reject the child with `RequestConflict` while the parent is non-terminal.
-- **AI model version is region-specific** — use `az cognitiveservices model list --location <region> --query "[?model.name=='gpt-5-mini']"` to find the correct version before generating Bicep. For example, `westus` requires `2025-08-07` (not `2025-02-27`).
+- **AI model version is region-specific.** Take it as a `modelVersion` parameter bound to `${AZURE_AI_MODEL_VERSION}` in `main.parameters.json`, never a hard-coded value, because the region is a parameter too. [Environment Preparation](#environment-preparation) looks it up. For example, `westus` offers `2025-08-07` (not `2025-02-27`).
 - Outputs in SCREAMING_SNAKE_CASE: `API_URL`, `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `RESOURCE_GROUP_NAME`. `API_URL` is the site origin, `https://<defaultHostName>`, with **no** `/api` suffix; the verifier and the iOS client add `/api/...` themselves.
 - The `AZURE_SQL_SERVER` app setting comes from the server's `properties.fullyQualifiedDomainName`. Don't concatenate `environment().suffixes.sqlServerHostname`, which already starts with a dot and produces `name..database.windows.net`. The `SQL_SERVER_NAME` output may be the short name or the FQDN; the hook normalizes it to both.
 - Module parameters derived from `uniqueString()` must declare explicit `@minLength(13)`/`@maxLength(13)` constraints, and the deploying principal ID parameter must declare `@minLength(36)`/`@maxLength(36)`, so the build emits no BCP334 warnings
+- **Every generated name fits its resource type's length limit** at the longest environment name the scaffold accepts. For example, an App Service plan name is at most 40 characters, so truncate the environment part rather than the `resourceToken`.
+- **Never change the name of a deployed resource in a fix.** Azure treats a new name as a new resource: the next `azd up` creates a second one and leaves the old one behind. Keep the existing formula for names that already fit, and check `azd provision --preview` for an unexpected `Create` before you redeploy.
 - `azd-service-name: 'api'` tag on the Function App
 - Function App settings: `DATA_PROVIDER=sql`, `AI_PROVIDER=foundry`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`, and `AZURE_SQL_CLIENT_ID` (the SQL identity's client ID). `AZURE_SQL_SERVER` must be the SQL FQDN, not just the short server name.
 - **Do NOT include `FUNCTIONS_WORKER_RUNTIME` in app settings** — Flex Consumption sets this via `functionAppConfig.runtime`, and having it in app settings causes a deployment error
@@ -94,8 +96,9 @@ Before provisioning, prepare the selected `azd` environment without creating any
 1. Register the `Microsoft.Web`, `Microsoft.Sql`, `Microsoft.CognitiveServices`, and `Microsoft.OperationalInsights` providers. Skip any that already report `Registered`.
 2. Resolve the subscription ID and the signed-in principal. For an interactive account, use type `User`, its sign-in name as the login, and its **object ID** as `AZURE_PRINCIPAL_ID`. For a service principal, use type `ServicePrincipal`, its display name as the login, and its **application (client) ID** as `AZURE_PRINCIPAL_ID`, because Azure SQL identifies a service principal admin by its application ID.
 3. Set `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_LOGIN`, `AZURE_PRINCIPAL_ID`, and `AZURE_PRINCIPAL_TYPE` with `azd env set`, and set `AZURE_LOCATION` to `westus` unless the learner chose another region.
-4. Read each value and pass it as a literal argument. Don't use shell command substitution, so the steps work in PowerShell, Command Prompt, bash, and zsh.
-5. If a value is unavailable, stop and report it rather than guessing or setting a placeholder.
+4. Look up the `gpt-5-mini` version offered in that region with `az cognitiveservices model list --location <region>` and set it as `AZURE_AI_MODEL_VERSION`.
+5. Read each value and pass it as a literal argument. Don't use shell command substitution, so the steps work in PowerShell, Command Prompt, bash, and zsh.
+6. If a value is unavailable, stop and report it rather than guessing or setting a placeholder.
 
 To do it by hand, run these and pass each returned value to `azd env set`:
 
@@ -107,11 +110,13 @@ az provider register --namespace Microsoft.OperationalInsights
 az account show --query id --output tsv
 az account show --query user.name --output tsv
 az ad signed-in-user show --query id --output tsv
+az cognitiveservices model list --location westus --query "[?model.name=='gpt-5-mini'].model.version" --output tsv
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 azd env set AZURE_PRINCIPAL_LOGIN <account-login>
 azd env set AZURE_PRINCIPAL_ID <principal-object-id>
 azd env set AZURE_PRINCIPAL_TYPE User
 azd env set AZURE_LOCATION westus
+azd env set AZURE_AI_MODEL_VERSION <model-version>
 ```
 
 For a service principal, set `AZURE_PRINCIPAL_TYPE` to `ServicePrincipal`, `AZURE_PRINCIPAL_ID` to its application (client) ID, and `AZURE_PRINCIPAL_LOGIN` to its display name.
@@ -143,7 +148,10 @@ The JavaScript hook must use argument arrays, not interpolated shell commands. O
    ```
 
    Validate that the client ID is a GUID and escape the identity name before building the statement. `db_ddladmin` lets the API apply its own migrations at startup. **Never fall back to SQL authentication or a password** if this step fails; stop and report the error.
-7. In `finally`, delete the temporary firewall rule and restore the original SQL connection policy even if a step fails.
+
+   `ALTER ROLE ... ADD MEMBER` does nothing when the user is already a member, so these statements are safe to rerun as written.
+
+7. In `finally`, delete the temporary firewall rule and restore the original SQL connection policy even if a step fails. Give each cleanup step its own `try`, so a failed rule deletion still restores the policy.
 8. Print `Post-provision SQL setup complete.` only after every required step succeeds.
 
 The hook doesn't create tables or seed data. The API does that at startup, under a lock (see the Data Access Layer section of [`PLAN-phase1-api.md`](./PLAN-phase1-api.md#data-access-layer)), so every deployment path, including the Phase 4 release pipeline, ships schema changes with the code.

@@ -303,8 +303,8 @@ The agent writes each fix as a new red commit (moving the `phase1-red` tag), the
 
 ```
 > Open the pull request for this stack layer with gh stack submit --auto
-  --open, then edit its description to close #<api-issue> and include the
-  gate results. Don't merge it.
+  --open. Then edit it: title it "Phase 1: API", and make the description
+  close #<api-issue> and include the gate results. Don't merge it.
 ```
 
 Watch the checks with `gh pr checks --watch`. Copilot code review posts one review a few minutes after the pull request opens (check with `gh pr view --json reviews`). Don't merge before it arrives: a review comment only blocks the merge once it exists.
@@ -312,8 +312,8 @@ Watch the checks with `gh pr checks --watch`. Copilot code review posts one revi
 Start Phase 2 while CI and review run. When the review arrives, read it, then hand it to the agent:
 
 ```
-> Handle the Copilot code review on this pull request with the triage
-  procedure in the "Review Triage" section of PLAN.md.
+> Handle the Copilot code review on pull request #<pr-number> with the
+  triage procedure in the "Review Triage" section of PLAN.md.
 ```
 
 Copilot reviews each pull request once, so there's no second round to wait for. When every check is green and every thread is resolved, merge the layer:
@@ -411,10 +411,17 @@ Computer Use lets an agent read the running app's accessibility tree and screens
 
 ```
 > Open the pull request for this stack layer with gh stack submit --auto
-  --open, then edit its description to close #<ios-issue>. Don't merge it.
+  --open. Then edit it: title it "Phase 2: iOS app", and make the
+  description close #<ios-issue>. Don't merge it.
 ```
 
-The pull request's base is `phase-1-api`, so it shows only the iOS changes, and GitHub shows both pull requests as one stack. Handle the Copilot code review with the Phase 1 triage prompt. If a finding belongs to the API, the triage fixes it in the `phase-1-api` layer and rebases the iOS layer on top.
+The pull request's base is `phase-1-api`, so it shows only the iOS changes, and GitHub shows both pull requests as one stack. The ruleset's automatic Copilot review only fires for pull requests that target `main`, so request it for this layer yourself:
+
+```text
+gh pr edit <pr-number> --add-reviewer @copilot
+```
+
+Handle the Copilot code review with the Phase 1 triage prompt. If a finding belongs to the API, the triage fixes it in the `phase-1-api` layer and rebases the iOS layer on top.
 
 When its review is done and its checks are green, merge it with `gh stack merge <pr-number> --yes --squash`. That also merges Phase 1 if it hasn't merged yet, but only if Phase 1 meets every rule too. Then run `gh stack sync`.
 
@@ -438,7 +445,7 @@ azd config set auth.useAzCliAuth true
 
 ```
 > Do the "Cost and Architecture Review" in PLAN-phase3-azure.md for issue
-  #<azure-issue>. This is read-only. Do not change files.
+  #<azure-issue>. This is read-only. Do not change files or post anything.
 ```
 
 Pick zero or one improvement for this run. The defaults work. If you adopt one, have the agent add it to `PLAN-phase3-azure.md` first, because the plan is what the generator, the gate, and the review all bind to. Then post your decisions:
@@ -500,7 +507,7 @@ When it passes, deploy. Run this yourself, because it prompts for an environment
 azd up
 ```
 
-The first `azd up` must end with `Post-provision SQL setup complete.` from the hook, which creates the database user for the Function App's SQL identity. The API creates its own tables and seed data on its first request. If the hook fails, use the "When something fails" prompt, then run `node infra/hooks/postprovision.js` directly until it prints that line. It's safe to run more than once. Afterward, only `AllowAzureServices` may remain: run `az sql server firewall-rule list --resource-group <resource-group> --server <sql-server> --query "[].name" --output tsv` with the values from `azd env get-value RESOURCE_GROUP_NAME` and `azd env get-value SQL_SERVER_NAME` (the part before the first dot).
+The first `azd up` must end with `Post-provision SQL setup complete.` from the hook, which creates the database user for the Function App's SQL identity. The API creates its own tables and seed data on its first request. Some `azd` versions don't show hook output, so if you don't see that line, run `node infra/hooks/postprovision.js` directly. It's safe to run more than once. If the hook fails, use the "When something fails" prompt, then rerun it until it prints that line. Afterward, only `AllowAzureServices` may remain: run `az sql server firewall-rule list --resource-group <resource-group> --server <sql-server> --query "[].name" --output tsv` with the values from `azd env get-value RESOURCE_GROUP_NAME` and `azd env get-value SQL_SERVER_NAME` (the part before the first dot).
 
 **Gate:** The same verifier from Phase 1, now pointed at Azure:
 
@@ -538,12 +545,12 @@ Use a prompt to discover how to do something, a skill to repeat it well, and a s
 
 ```
 > Commit the infrastructure, skill, and scripts. Open the pull request for
-  this stack layer with gh stack submit --auto --open, then edit its
-  description to close #<azure-issue> and include the verifier's PASS line.
-  Don't merge it.
+  this stack layer with gh stack submit --auto --open. Then edit it: title
+  it "Phase 3: Azure deployment", and make the description close
+  #<azure-issue> and include the verifier's PASS line. Don't merge it.
 ```
 
-The `infra` check runs `check-infra.mjs --offline`. Handle the Copilot code review with the same prompt as Phase 1; because this pull request changes `infra/`, the triage procedure also redeploys and reruns the verifier before it replies.
+The `infra` check runs `check-infra.mjs --offline`. Request the Copilot review with `gh pr edit <pr-number> --add-reviewer @copilot` as in Phase 2, then handle it with the same prompt as Phase 1; because this pull request changes `infra/`, the triage procedure also redeploys and reruns the verifier before it replies.
 
 Then merge it with `gh stack merge <pr-number> --yes --squash`, which lands any layers still below it, and run `gh stack sync --prune`. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
 
@@ -645,7 +652,7 @@ The next step is running the factory on a schedule without anyone starting it. T
 
 ## Lessons from Validation Runs
 
-This journey was run end to end three times before publishing. Each rule below exists because a run broke without it.
+This journey was run end to end five times before publishing. Each rule below exists because a run broke without it.
 
 - **Auto-merge before review merged unreviewed code.** A pull request merged four minutes before Copilot's review posted four real findings. Hence: wait for the review, and require conversation resolution.
 - **Review rounds multiplied.** Every push started a new review, and each round found something in the last fix. Three rounds on one pull request cost more than the implementation. Hence: one round, one push.
@@ -654,6 +661,8 @@ This journey was run end to end three times before publishing. Each rule below e
 - **Local fakes hide production bugs.** gpt-5-mini rejected `max_tokens`, a SQL date was bound as a string, and a schema change shipped before its column existed. None of them showed up with the fake AI and the in-memory store. Hence: boundary tests and Verify Before Merge.
 - **Cleanup must survive failure.** The deployment hook left a temporary SQL firewall rule open twice, once from an unsupported flag and once from a crash right after creating it.
 - **Timing matters for the cloud agent.** An issue assigned before Phase 2 merged made the agent rebuild the iOS app, and every Swift file conflicted.
+- **Upper stack layers skipped review.** The ruleset only requests Copilot review for pull requests whose base is `main`, so the iOS and Azure layers got none until it was requested. Nothing blocked the merge. Hence: `gh pr edit --add-reviewer @copilot` for every layer above the bottom.
+- **A fix renamed a live resource.** Copilot flagged an App Service plan name that could exceed 40 characters. The first fix changed the name for every environment, and the redeploy created a second plan next to the running one. Hence: never rename a deployed resource, and read the preview for an unexpected `Create`.
 - **Plan mode blocks writes.** `/fleet` launched while the session was still in plan mode; three subagents designed everything and wrote nothing.
 
 </details>
@@ -702,6 +711,7 @@ This journey was run end to end three times before publishing. Each rule below e
 | Checks never start on the cloud agent's pull request | Turn off **Require approval for workflow runs** (Settings → Copilot → Cloud agent), or run `gh run rerun <run-id>` for the run whose conclusion is `action_required`. |
 | `gh pr merge` or auto-merge fails on a stack layer | Stack layers merge with `gh stack merge <pr-number> --yes --squash`, which also merges the unmerged layers below it. |
 | A layer shows "needs rebase", or the stack merge reports a non-linear history | A lower layer or `main` moved. Run `gh stack sync`, or `gh stack rebase` and then `gh stack push`. On a conflict, resolve it and run `gh stack rebase --continue`. |
+| A stack layer above the bottom never gets a Copilot review | The ruleset requests Copilot review only for pull requests whose base is `main`. Run `gh pr edit <pr-number> --add-reviewer @copilot`. Without it, the layer can merge unreviewed. |
 | `gh stack submit` exits with code 9 | Stacked pull requests aren't available for the repository (the feature is in public preview). Open ordinary pull requests with the same bases, and merge them from the bottom up. |
 | The Functions host stops when you switch branches | Run the API from the detached API worktree, not the stack checkout. |
 | The ruleset exists but doesn't block merging | Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public, or continue knowing the gates don't block. |
