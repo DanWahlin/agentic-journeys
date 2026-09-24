@@ -1,69 +1,64 @@
 # SmartTodo Phase 1: API and AI
 
-Build the SmartTodo API, data model, repository layer, REST contracts, deterministic seed data, and AI task decomposition.
+Build the SmartTodo API, data model, repository layer, REST contracts, deterministic seed data, AI task decomposition, and the tests that prove them.
 
-Read [`PLAN.md`](./PLAN.md) first for the journey vision, shared decisions, and end-to-end acceptance criteria. README prompts use the exact section names in this document as stable references. If a section is renamed, update its README references in the same change.
+Read [`PLAN.md`](./PLAN.md) first for the journey vision, shared decisions, quality gates, and CI requirements. README prompts use the exact section names in this document as stable references. If a section is renamed, update its README references in the same change.
 
 **Out of scope:** No user authentication (anonymous for now), no push notifications, no collaboration/sharing, no offline sync, no recurring todos, no image attachments.
 
 ---
 
-## Choose Your Stack
+## Stack
 
-Pick your API language. Data models, endpoints, and acceptance criteria are identical across stacks. Azure Functions Flex Consumption is the hosting plan for all languages.
+| Concern | Choice |
+| --- | --- |
+| Runtime | Node.js LTS + TypeScript |
+| Functions | Azure Functions Node.js v4 programming model (`@azure/functions`) |
+| Azure SQL | `mssql` + `@types/mssql` (dev) |
+| AI | `openai` |
+| Tests | `vitest` |
+| Seed script | `tsx` |
+| Local storage emulator | `azurite` (dev dependency) |
 
-**Happy path (recommended for first run):** Node.js + TypeScript + Azure Functions v4, region `westus`, model `gpt-5-mini` (fallback `gpt-4.1`). Todo status enum: **`pending` | `in_progress` | `completed`** only (never `not_started`).
+Todo status values are **`pending` | `in_progress` | `completed`** only (never `not_started`). Region `westus`, model `gpt-5-mini` (fallback `gpt-4.1`).
 
-| | Node.js | Python | .NET | Java |
-|---|---------|--------|------|------|
-| **Framework** | Azure Functions Node.js v4 programming model (`@azure/functions`) + TypeScript | Azure Functions v4 runtime (Python v2 programming model) | Azure Functions isolated worker model + C# | Azure Functions + Java |
-| **Azure SQL** | `mssql` + `@types/mssql` (dev) | `mssql-python` | `Microsoft.Data.SqlClient` | `mssql-jdbc` (`com.microsoft.sqlserver:mssql-jdbc`) |
-| **AI** | `openai` | `openai` | `OpenAI` | `com.openai:openai-java` |
-
-The client uses Swift and SwiftUI (iOS 17+). **Mac + Xcode are required for the iOS client.** Deploy the backend with **azd** + **Bicep**. Prefer Azure Verified Modules (AVM), but use raw `Microsoft.*` resources when AVM parameter drift blocks deployment.
-
-The iOS app is NOT deployed by azd — only the Azure backend is. The app points at the deployed API URL via a `Config.swift` file.
+**Other stacks:** Python v2, .NET isolated, and Java Azure Functions can implement the same contracts, but the tests, gates, and CI in this journey are specified for Node.js. If you switch, you also own translating the Test Strategy and Quality Gate sections.
 
 ## Project Structure
 
-```
-smart-todo/
+Paths are relative to `journeys/smart-todo`.
+
+```text
+src/api/
+├── host.json
+├── package.json
+├── tsconfig.json                  # build: rootDir src, outDir dist
+├── tsconfig.check.json            # type-check src and test, noEmit
+├── vitest.config.ts
+├── local.settings.example.json    # committed, no secrets
+├── local.settings.json            # gitignored copy of the example
+├── .funcignore
 ├── src/
-│   ├── api/                    # Azure Functions (your chosen language)
-│   │   ├── host.json
-│   │   ├── local.settings.json
-│   │   └── src/
-│   │       ├── functions/      # HTTP-triggered functions
-│   │       ├── data/           # Repository pattern + Azure SQL
-│   │       ├── ai/             # AI task decomposition
-│   │       └── models/         # Data models
-│   └── ios/
-│       └── SmartTodo/
-│           ├── SmartTodo.xcodeproj
-│           ├── SmartTodoApp.swift
-│           ├── Config.swift
-│           ├── Models/
-│           ├── Services/
-│           └── Views/
-├── infra/                      # Bicep with AVM modules or raw Microsoft.* resources
-│   ├── main.bicep
-│   ├── main.parameters.json
-│   ├── abbreviations.json
-│   └── modules/
-└── azure.yaml                  # azd configuration
+│   ├── functions/                 # thin Azure Functions registrations only
+│   ├── handlers/                  # request handling, receives dependencies
+│   ├── data/                      # repository interfaces, memory + Azure SQL stores, factory, seed
+│   ├── ai/                        # StepGenerator interface, Foundry + fake generators, parser
+│   └── models/
+└── test/
+    ├── contract/                  # one file per endpoint
+    ├── ai/                        # parser and retry tests with fixtures
+    └── data/                      # shared repository contract suite
 ```
 
-The API must follow the **repository pattern** (interfaces/contracts → implementations → factory) so functions never import the database client directly. Define repository contracts as interfaces or protocols in your chosen language. The data layer uses Azure SQL.
+The API must follow the **repository pattern** (interfaces → implementations → factory) so handlers never import the database client directly. Handlers receive their dependencies (`DataStore` and `StepGenerator`) as arguments, so tests can pass in-memory and fake implementations. Files in `src/functions/` only register routes and call the handlers with dependencies from the factories.
 
 ---
 
 ## API
 
-Build the API with Azure SQL Database. Use an existing Azure SQL instance during local development; the Azure Deployment section provisions the instance used by the deployed app.
-
 ### Data Access Layer
 
-Define these repository contracts as interfaces or protocols in your chosen language:
+Define these repository contracts as TypeScript interfaces:
 
 ```
 TodoRepository:
@@ -75,6 +70,7 @@ TodoRepository:
 
 ActionStepRepository:
   getByTodoId(todoId) → ActionStep[]
+  getByTodoIds(todoIds) → ActionStep[]   // required; one query for a whole list
   create(step) → ActionStep
   update(id, updates) → ActionStep
   deleteByTodoId(todoId) → void
@@ -85,19 +81,57 @@ DataStore:
   initialize() → void
 ```
 
-Functions never import the database client directly — they get a `DataStore` from the factory. The factory should call `initialize()` once and cache the result so that HTTP function handlers don't pay the cost of `CREATE TABLE IF NOT EXISTS` on every request.
+Provide two implementations: an in-memory store and an Azure SQL store. The factory selects one from `DATA_PROVIDER`, calls `initialize()` once, and caches the result so HTTP handlers don't pay the initialization cost on every request.
 
-> **Note:** The `update()` method on `TodoRepository` must also support updating `stepsGenerated` (boolean) — the `generateSteps` function sets this to `true` after inserting AI-generated steps. Include `stepsGenerated` as an optional field in your update input type alongside `title` and `status`.
+- **Azure SQL `initialize()` applies migrations and seed data under a lock.** The schema lives in one place, `src/data/migrations.ts`: an ordered list of idempotent statements (`IF OBJECT_ID(...) IS NULL CREATE TABLE ...`, `IF COL_LENGTH(...) IS NULL ALTER TABLE ... ADD ...`). `initialize()` opens a transaction, takes an exclusive application lock with `sp_getapplock @Resource = 'smart-todo-migrations', @LockMode = 'Exclusive', @LockOwner = 'Transaction'`, runs every migration, inserts any missing seed rows by ID, and commits. Several Functions instances can start at once; the lock makes them take turns, and idempotent statements make the later ones no-ops. Because the app applies its own schema, a deployment that adds a column also adds the column, with no separate migration step. A schema change is a new entry at the end of `migrations.ts`; never edit an earlier entry.
+- **Both stores enforce the same rules.** The in-memory store rejects an action step whose `todoId` doesn't exist, just as the SQL foreign key does, so tests on the memory store catch the same mistakes.
+- **Create returns what it created.** `POST /api/todos` returns the todo that `create()` returned, with `steps: []`. Don't re-read the user's whole list to find it.
 
-**Node.js entry point note:** Set `"main": "dist/functions/*.js"` in `package.json` — this must match where `tsc` emits the compiled function files. Since `tsconfig.json` uses `rootDir: "src"` and `outDir: "dist"`, source files under `src/functions/` compile to `dist/functions/` (the `src/` prefix is stripped). A common mistake is writing `"main": "dist/src/functions/*.js"` which causes Azure Functions Core Tools to find zero functions.
+**List performance:** `GET /api/todos` loads the steps for every returned todo with one `getByTodoIds` call, not one `getByTodoId` call per todo (an N+1 query pattern). `getByTodoIds` is a required method on every store. Call it as a method on the repository, not as an extracted function, so class implementations keep `this`.
 
-**Node.js deployment note:** For `azd` remote/Oryx build, do not exclude `src/` or `tsconfig.json` in `.funcignore`; Azure needs both to compile TypeScript. Exclude `node_modules/`, `dist/**/*.map`, and `local.settings.json`.
+**Known limitation:** Handlers that write more than once (generating or regenerating steps, and step updates that change the todo's status) call the repository several times without a transaction, so a failure part-way can leave partial data. That's accepted for this demo and listed in [Production Hardening](./PLAN.md#production-hardening-out-of-scope). When a reviewer raises it, file or link a `known-limitation` issue rather than fixing it.
 
-**Local Functions storage:** When `local.settings.json` uses `AzureWebJobsStorage=UseDevelopmentStorage=true`, Azurite is a required local prerequisite. Start it before `func start`, or configure a real development Storage account instead.
+> **Note:** The `update()` method on `TodoRepository` must also support updating `stepsGenerated` (boolean). The `generateSteps` handler sets it to `true` after inserting AI-generated steps. Include `stepsGenerated` as an optional field in the update input type alongside `title` and `status`.
 
-**Local SQL architecture:** The standard SQL Server Linux container is AMD64-only. On Apple Silicon, Windows ARM64, and Linux ARM64, default to Azure SQL unless Docker's AMD64 emulation has already been verified. Never install privileged QEMU/binfmt handlers automatically.
+**Node.js entry point note:** Set `"main": "dist/functions/*.js"` in `package.json`. Since `tsconfig.json` uses `rootDir: "src"` and `outDir: "dist"`, source files under `src/functions/` compile to `dist/functions/`. Writing `"main": "dist/src/functions/*.js"` makes Azure Functions Core Tools find zero functions. Keep `test/` out of the build config and type-check it through `tsconfig.check.json` instead.
 
-**Azure SQL notes:** Use `[order]` (bracket-quoted) since `order` is a SQL reserved word. For managed identity auth, use `azure-active-directory-default` authentication — no passwords. SSL is required by default. In Azure, set `AZURE_SQL_SERVER` to the full FQDN from `fullyQualifiedDomainName` (for example, `sql-name.database.windows.net`) and do not strip the `.database.windows.net` suffix. For local development, connect to Azure SQL using a connection string with SQL auth or your Azure AD identity — set `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`, and optionally `AZURE_SQL_USER`/`AZURE_SQL_PASSWORD` in `local.settings.json`.
+**Node.js deployment note:** For `azd` remote/Oryx build, do not exclude `src/` or `tsconfig.json` in `.funcignore`; Azure needs both to compile TypeScript. Exclude `node_modules/`, `test/`, `dist/**/*.map`, and `local.settings.json`.
+
+**Local Functions storage:** `local.settings.json` uses `AzureWebJobsStorage=UseDevelopmentStorage=true`, so Azurite must be running before `func start`. Install it as a project-local dev dependency and start it with `npm run azurite`. Its data folder, `.azurite/`, is gitignored.
+
+**Azure SQL notes:** On update, the SQL store makes `updatedAt` strictly later than the stored value, the same rule as the memory store (for example, `CASE WHEN SYSUTCDATETIME() > updatedAt THEN SYSUTCDATETIME() ELSE DATEADD(microsecond, 1, updatedAt) END`). Use `[order]` (bracket-quoted) since `order` is a SQL reserved word. Use parameterized queries only. For managed identity auth, use `azure-active-directory-default` authentication with no passwords. SSL is required by default. In Azure, set `AZURE_SQL_SERVER` to the full FQDN from `fullyQualifiedDomainName` (for example, `sql-name.database.windows.net`) and do not strip the `.database.windows.net` suffix. Use `SYSUTCDATETIME()` (or a timestamp set by the app) for `createdAt` and `updatedAt`, not `GETUTCDATE()`, whose low `datetime` precision can make `updatedAt` unchanged after a quick update. `getByTodoIds` sends at most 1,000 IDs per query and splits larger lists into batches, because SQL Server allows about 2,100 parameters per request.
+
+### Local Providers
+
+Two settings select implementations. The factories fail at startup with a clear message when a value is missing or unknown.
+
+| Setting | Values | Local and CI | Azure |
+| --- | --- | --- | --- |
+| `DATA_PROVIDER` | `memory`, `sql` | `memory` | `sql` |
+| `AI_PROVIDER` | `fake`, `foundry` | `fake` | `foundry` |
+
+- **`memory`** keeps data in process memory and loads the [Seed Data](#seed-data) on `initialize()`. Restarting the API resets the data. No database is needed.
+- **`fake`** returns deterministic steps with no network call. See [AI Task Decomposition](#ai-task-decomposition).
+- **`sql`** and **`foundry`** are the production implementations. Learners can use them locally by filling in the Azure values in `local.settings.json`, but no phase requires it.
+
+Commit this file as `src/api/local.settings.example.json` and copy it to the gitignored `local.settings.json`:
+
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "DATA_PROVIDER": "memory",
+    "AI_PROVIDER": "fake",
+    "AZURE_SQL_SERVER": "",
+    "AZURE_SQL_DATABASE": "SmartTodo",
+    "AZURE_AI_ENDPOINT": "",
+    "AZURE_AI_DEPLOYMENT": "gpt-5-mini",
+    "AZURE_AI_KEY": ""
+  }
+}
+```
 
 ### Data Models
 
@@ -108,10 +142,10 @@ Functions never import the database client directly — they get a `DataStore` f
 | id | string | auto | UUID v4, generated on create |
 | title | string | yes | 1–500 characters, trimmed |
 | status | string | auto | `pending` on create. Valid values: `pending`, `in_progress`, `completed` |
-| userId | string | yes | Non-empty string |
+| userId | string | yes | 1–100 characters after trimming, to fit the `NVARCHAR(100)` column |
 | stepsGenerated | boolean | auto | `false` on create, `true` after steps are generated |
 | createdAt | string | auto | ISO 8601 timestamp |
-| updatedAt | string | auto | ISO 8601 timestamp, updated on every change |
+| updatedAt | string | auto | ISO 8601 timestamp, strictly later than the previous value on every change (add 1 ms when the clock hasn't advanced) |
 
 #### ActionStep
 
@@ -127,6 +161,8 @@ Functions never import the database client directly — they get a `DataStore` f
 
 ### Database Schema (SQL)
 
+The first entries in `src/data/migrations.ts` create this schema, each guarded so it can run again safely:
+
 ```sql
 CREATE TABLE Todos (
     id NVARCHAR(36) PRIMARY KEY,
@@ -134,8 +170,8 @@ CREATE TABLE Todos (
     status NVARCHAR(20) NOT NULL DEFAULT 'pending',
     userId NVARCHAR(100) NOT NULL,
     stepsGenerated BIT NOT NULL DEFAULT 0,
-    createdAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
-    updatedAt DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+    createdAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+    updatedAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
 );
 
 CREATE INDEX IX_Todos_UserId ON Todos(userId);
@@ -147,7 +183,7 @@ CREATE TABLE ActionSteps (
     description NVARCHAR(1000) NOT NULL,
     [order] INT NOT NULL,
     isCompleted BIT NOT NULL DEFAULT 0,
-    createdAt DATETIME2 NOT NULL DEFAULT GETUTCDATE(),
+    createdAt DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
     CONSTRAINT FK_ActionSteps_Todos FOREIGN KEY (todoId) REFERENCES Todos(id) ON DELETE CASCADE
 );
 
@@ -164,7 +200,7 @@ Query parameters:
 |-------|------|----------|-------------|
 | userId | string | yes | Filter todos by user |
 
-Response (200): `Todo[]` including nested `steps`. 400 if `userId` is missing.
+Response (200): `Todo[]`, each including nested `steps` sorted by `order`. 400 if `userId` is missing, whitespace-only, or longer than 100 characters.
 
 #### `POST /api/todos`
 
@@ -177,7 +213,7 @@ Request body:
 }
 ```
 
-Response (201): Created `Todo` with `status: "pending"`, `stepsGenerated: false`, and empty `steps`. 400 if `title` is empty, missing, or exceeds 500 characters. 400 if `userId` is missing.
+Response (201): Created `Todo` with `status: "pending"`, `stepsGenerated: false`, and empty `steps`. 400 if `title` is missing, empty after trimming, or longer than 500 characters. 400 if `userId` is missing.
 
 #### `PATCH /api/todos/:id`
 
@@ -192,7 +228,7 @@ Request body (all fields optional):
 
 Response (200): Updated todo object (same shape as GET response, including steps).
 
-404 if todo not found. 400 if `status` is not one of `pending`, `in_progress`, `completed`.
+404 if todo not found. 400 if `status` is not one of `pending`, `in_progress`, `completed`. See [Decision Points](#decision-points) for an empty body and for manual status changes.
 
 #### `DELETE /api/todos/:id`
 
@@ -202,21 +238,18 @@ Response (204): No content.
 
 #### `POST /api/todos/:id/generate-steps`
 
-No request body. Calls the AI service to generate action steps from the todo's title.
+No request body. Calls the configured `StepGenerator` to generate action steps from the todo's title.
 
 **Behavior:**
-1. Fetch the todo by ID — 404 if not found
-2. If `stepsGenerated` is already `true`, delete existing steps first (regenerate)
-3. Call gpt-5-mini with the todo title using the system prompt from the AI Task Decomposition section below
-4. Parse the AI response as a JSON array
-5. Validate each item has `title` (string, non-empty) and `description` (string, non-empty)
-6. Assign sequential `order` values starting at 1
-7. Generate UUID for each step's `id`
-8. Insert all steps into the database
-9. Set `stepsGenerated = true` on the todo
-10. Return the todo with all generated steps
+1. Fetch the todo by ID. Return 404 if not found.
+2. If `stepsGenerated` is already `true`, delete existing steps first (regenerate). Delete before calling the generator, in this order, so a failed regeneration leaves no steps rather than stale ones mixed with the new `stepsGenerated` state.
+3. Call the `StepGenerator` with the todo title.
+4. Assign sequential `order` values starting at 1 and a UUID for each step's `id`.
+5. Insert all steps into the database.
+6. Set `stepsGenerated = true` on the todo.
+7. Return the todo with all generated steps.
 
-Response (200): Updated `Todo` with 3-7 AI-generated `steps`. Each step has `title`, `description`, `order`, and `isCompleted`. 404 if todo not found. 503 if AI service is unavailable or returns unparseable output after retry.
+Response (200): Updated `Todo` with 3–7 generated `steps`. Each step has `id`, `title`, `description`, `order`, and `isCompleted`. 404 if todo not found. 503 with `AI_SERVICE_ERROR` if the generator fails after its retry. See [Decision Points](#decision-points) for step counts and regenerating completed work.
 
 #### `PATCH /api/todos/:id/steps/:stepId`
 
@@ -228,9 +261,22 @@ Request body:
 }
 ```
 
-Response (200): Updated `ActionStep`. 404 if todo or step not found. 400 if `isCompleted` is not a boolean.
+Response (200): Updated `ActionStep`. 404 if the todo is not found, or if the step is not found or belongs to a different todo. 400 if `isCompleted` is not a boolean.
 
-**Auto-completion rule:** After updating a step, check all steps for the parent todo. If ALL steps are `isCompleted: true`, set the todo's status to `completed`. If a step is unchecked (`isCompleted: false`) and the todo's status is `completed`, set it back to `in_progress`.
+**Auto-completion rule:** After updating a step, check all steps for the parent todo. If ALL steps are `isCompleted: true`, set the todo's status to `completed`. If a step is unchecked (`isCompleted: false`) and the todo's status is `completed`, set it back to `in_progress`. See [Decision Points](#decision-points) for a pending todo whose first step is completed. When the completed step is the todo's last incomplete step, this rule wins, and the todo becomes `completed`.
+
+### Decision Points
+
+The `grill-plan` skill asks about each item before implementation. Use the default when the learner has no preference. Record the answers as a `Decisions` comment on the Phase 1 issue, and write tests for the chosen behavior.
+
+| # | Question | Why it matters | Default |
+| --- | --- | --- | --- |
+| 1 | What happens when the model returns fewer than 3 or more than 7 valid steps? | It decides whether a bad answer becomes an error or a trimmed result. | Fewer than 3 is invalid output, so retry once and then return 503. More than 7 keeps the first 7. |
+| 2 | When steps are regenerated on a `completed` todo, what happens to its status? | New steps are all incomplete, so `completed` would be false. | Set it to `in_progress`. Keep any other status unchanged. |
+| 3 | When a step is completed on a `pending` todo and other steps remain incomplete, does the todo change? | Otherwise a todo can show progress while still marked pending. | Set it to `in_progress`. If no incomplete steps remain, the auto-completion rule applies and the todo becomes `completed`. |
+| 4 | Can `PATCH /api/todos/:id` set `completed` while steps are incomplete? | It decides whether status is a manual field or derived only from steps. | Allow it. Auto-status reacts only to step changes. |
+| 5 | What does `PATCH /api/todos/:id` return for a body with neither `title` nor `status`? | Silent success hides client bugs. | 400 `VALIDATION_ERROR`. |
+| 6 | How long can one model call take? | A hung call holds a Functions instance and the iPhone spinner. | 30 seconds. Abort the request with an `AbortSignal` at the timeout, so the model call actually stops before the retry starts. A timeout counts as a failed attempt. |
 
 ### Error Response Format
 
@@ -253,9 +299,13 @@ Status code mapping:
 - `AI_SERVICE_ERROR` → 503
 - `INTERNAL_ERROR` → 500
 
+Unexpected exceptions return 500 `INTERNAL_ERROR` without stack traces or connection details. Every handler, including failures thrown while reading the request body or resolving dependencies, goes through the same error wrapper, so no response escapes the envelope.
+
+`DATA_PROVIDER` and `AI_PROVIDER` are validated when the Functions module loads, not on the first request, so a misconfigured app fails at startup where the logs show it.
+
 ### Seed Data
 
-The seed script (`src/api/src/data/seed.ts`) must run before first use so the API returns data immediately. Add an npm script to make this easy: `"seed": "tsx src/data/seed.ts"`. The seed should be idempotent — skip if the database already contains rows. The README test commands (for example, `curl ".../api/todos?userId=user-1"`) assume seed data is present.
+Define these rows once, in `src/data/seed-data.ts`, and use that module in both stores. The in-memory store loads it on `initialize()`. For Azure SQL, `src/data/seed.ts` inserts each seed row whose `id` doesn't exist yet, with the exact IDs, statuses, and `isCompleted` values below. Don't generate new IDs, don't reset completion states, and don't skip seeding because a user already has todos. The script closes its SQL connection pool when it finishes, even after an error. Run it with `npm run seed` (`"seed": "tsx src/data/seed.ts"`). In Azure, the SQL store's `initialize()` inserts the same missing rows at startup, inside the migration lock, so the deployed app has seed data on its first request.
 
 **Todos** (all userId: "user-1"):
 
@@ -265,7 +315,7 @@ The seed script (`src/api/src/data/seed.ts`) must run before first use so the AP
 | todo-2 | Set up home office | in_progress | true |
 | todo-3 | Plan weekend hiking trip | completed | true |
 
-Seed action steps for `todo-2` and `todo-3` so the app can show generated/completed states immediately:
+Seed action steps for `todo-2` and `todo-3` so the app can show generated and completed states immediately:
 
 | id | todoId | title | order | isCompleted |
 |----|--------|-------|-------|-------------|
@@ -281,13 +331,20 @@ Use short actionable descriptions for each seed step.
 
 ### AI Task Decomposition
 
-**Endpoint:** `POST /api/todos/:id/generate-steps`
+**Interface:**
 
-**AI SDK:** Use the plain OpenAI-compatible SDK for the chosen language (`openai`, `OpenAI`, or `com.openai:openai-java`) with a normalized `/openai/v1/` base URL.
+```
+StepGenerator:
+  generate(title) → { title, description }[]   // throws AiServiceError on failure
+```
 
-**Client setup:** Normalize `AZURE_AI_ENDPOINT` so it ends with `/openai/v1/`, pass `AZURE_AI_KEY` as the API key, and pass `AZURE_AI_DEPLOYMENT` as the model/deployment name when calling chat completions.
+**Fake generator (`AI_PROVIDER=fake`):** Returns exactly four steps with the titles `Clarify the goal`, `Gather what you need`, `Do the first focused session`, and `Review and wrap up`. Each description mentions the todo title. It makes no network call and returns the same output for the same title.
 
-Do **not** use a dated `api-version` and do **not** use an Azure-specific client that requires one. The dated GA version (`2024-10-21`) rejects newer parameters such as `reasoning_effort`, and the versionless `/openai/v1` API has been GA since August 2025. There is deliberately no `AZURE_AI_API_VERSION` variable — do not add one to the app or to the Function App settings.
+**Foundry generator (`AI_PROVIDER=foundry`):** Uses the plain `openai` SDK with a normalized `/openai/v1/` base URL.
+
+**Client setup:** Normalize `AZURE_AI_ENDPOINT` so it ends with `/openai/v1/`, pass `AZURE_AI_KEY` as the API key, and pass `AZURE_AI_DEPLOYMENT` as the model/deployment name when calling chat completions. If the endpoint or key is empty, throw `AiServiceError` so the endpoint returns 503.
+
+Do **not** use a dated `api-version` and do **not** use an Azure-specific client that requires one. The dated GA version (`2024-10-21`) rejects newer parameters such as `reasoning_effort`, and the versionless `/openai/v1` API has been GA since August 2025. There is deliberately no `AZURE_AI_API_VERSION` variable. Do not add one to the app or to the Function App settings.
 
 **System prompt:**
 
@@ -316,36 +373,98 @@ Respond with ONLY a valid JSON array. No markdown, no code fences, no explanatio
 **User prompt:** The todo's `title` field, verbatim.
 
 **Model config:**
-- Model: `gpt-5-mini` (fallback: `gpt-4.1` — check regional availability with `az cognitiveservices model list --location <region>`)
-- Temperature: leave at the model default — gpt-5 family models reject custom temperature values. Set `0.7` only if using the gpt-4.1 fallback.
-- Max tokens: `1500`
+- Model: `gpt-5-mini` (fallback: `gpt-4.1`; check regional availability with `az cognitiveservices model list --location <region>`)
+- Temperature: leave at the model default. gpt-5 family models reject custom temperature values. Set `0.7` only if using the gpt-4.1 fallback.
+- Max completion tokens: `1500`, sent as `max_completion_tokens`. gpt-5 family deployments reject the older `max_tokens` parameter, and the fake generator can't reveal that, so a unit test must assert the request uses `max_completion_tokens`.
+- Timeout: pass an `AbortSignal` that fires after 30 seconds to every request. `Promise.race()` alone stops waiting but leaves the paid request running.
 
-**Response parsing:**
-1. Get the raw text response from the model
-2. Strip markdown code fences if present (` ```json\n...\n``` ` → `[...]`)
-3. Parse as JSON array
-4. Validate: array of objects, each with non-empty `title` (string) and `description` (string)
-5. If validation fails, retry once with a stricter follow-up: "Your previous response was not valid JSON. Return ONLY a JSON array."
-6. If retry fails, throw `AI_SERVICE_ERROR`
-7. Assign sequential `order` values (1, 2, 3...)
-8. Generate UUID v4 for each step's `id`
+**Response parsing** (a pure function, so tests can call it directly):
+1. Get the raw text response from the model.
+2. Strip markdown code fences if present (` ```json\n...\n``` ` → `[...]`).
+3. Parse as a JSON array.
+4. Validate: an array of objects, each with a string `title` of 1–200 characters and a string `description` of 1–1000 characters, both after trimming. A whitespace-only or over-length value makes the whole response invalid. Return the **trimmed** values, so what's stored always fits the SQL columns.
+5. Apply the step-count rule from [Decision Points](#decision-points).
+6. If validation fails, retry once with a stricter follow-up: "Your previous response was not valid JSON. Return ONLY a JSON array."
+7. If the retry fails, throw `AiServiceError`.
 
 **Environment Variables:**
 
 | Variable | Local Dev | Production |
 |----------|-----------|------------|
-| AZURE_AI_ENDPOINT | From Azure Portal (with or without `/openai/v1/`) | Set by Bicep output |
+| AI_PROVIDER | `fake` | `foundry`, set by Bicep |
+| AZURE_AI_ENDPOINT | Empty, or from the Azure portal to try the real model | Set by Bicep output |
 | AZURE_AI_DEPLOYMENT | `gpt-5-mini` | Set by Bicep output |
-| AZURE_AI_KEY | API key from portal | Set by Bicep output |
+| AZURE_AI_KEY | Empty, or an API key from the portal | Set by Bicep |
 
-Local dev and production both use API key auth via the plain `openai` package. Normalize the endpoint to include `/openai/v1/` before creating the client; Bicep may output the raw resource endpoint without that suffix. No api-version setting is required or wanted.
+---
+
+## Test Strategy
+
+Every test in `npm test` runs without a database, an AI key, or network access, so it gives the same result on a laptop, in CI, and in a cloud agent session.
+
+**Composition:** Each test builds a fresh, seeded in-memory `DataStore` and passes it, with a fake or scripted `StepGenerator`, to the handler under test. A scripted generator returns queued results so tests can simulate a bad answer followed by a good one. Construct requests with the `HttpRequest` class exported by `@azure/functions` v4.
+
+**Naming:** Name each test after the behavior it proves, for example `returns 400 VALIDATION_ERROR when title exceeds 500 characters`. Reading the test names should feel like reading this plan.
+
+**Contract tests (`test/contract/`)** cover at least:
+
+| Endpoint | Behaviors |
+| --- | --- |
+| `GET /api/todos` | 400 without `userId`. Returns the seed todos with nested steps sorted by `order`. Returns `[]` for a user with no todos. Loads steps with one `getByTodoIds` call. |
+| `POST /api/todos` | 201 with the documented shape. Trims the title. Accepts 500 characters. Rejects missing, whitespace-only, and 501-character titles. Rejects a missing, whitespace-only, and 101-character `userId`. Returns the created todo without re-reading the list. |
+| `PATCH /api/todos/:id` | Updates `title` and `status` and changes `updatedAt`. 400 for an invalid status. Decision Points 4 and 5. 404 for an unknown id. |
+| `DELETE /api/todos/:id` | 204 with an empty body. Cascade-deletes steps. 404 for an unknown id. |
+| `POST /api/todos/:id/generate-steps` | 200 with ordered steps and `stepsGenerated: true`. Regenerate replaces steps. Decision Point 2. 404 for an unknown id. 503 envelope when the generator fails. |
+| `PATCH /api/todos/:id/steps/:stepId` | 200 with the updated step. 400 for a non-boolean. 404 for an unknown todo, an unknown step, and a step from another todo. Auto-completion. Reopen on uncheck. Decision Point 3 with a two-step todo, and completing the only step of a pending todo (becomes `completed`). |
+
+Every error test also asserts the `{ error: { code, message } }` envelope.
+
+**AI tests (`test/ai/`)** cover: a plain JSON array; a fenced ` ```json ` response; prose around the JSON (invalid); a missing `description` (invalid); a whitespace-only title and a 201-character title (invalid); the step-count rule for 2 and 9 items; one invalid answer followed by a valid one (success after exactly two calls); two invalid answers (`AiServiceError`); a timeout that aborts the request's `AbortSignal` before the retry starts; and endpoint normalization with and without `/openai/v1/` and a trailing slash. Use recorded fixture strings, not a real model.
+
+**Repository contract suite (`test/data/`):** Write one shared suite of repository behaviors, including `getByTodoIds` and ordering, as an exported function. Run it against the in-memory store in every test run. Call the same function against Azure SQL only when `AZURE_SQL_SERVER` is set, and skip it otherwise. Don't write a smaller, separate SQL test instead. SQL runs use a unique `userId`, delete their rows, and close the SQL store's connection pool in `afterAll`, even when a test fails.
+
+**Store parity tests:** Both stores reject an action step for an unknown `todoId`, and an immediate update always produces a later `updatedAt`. SQL `initialize()` takes the `sp_getapplock` lock inside a transaction before any DDL, runs every migration in order, and is safe to run twice.
+
+**Migration tests:** A source-level test reads `src/data/migrations.ts` and asserts every statement is guarded (`IF OBJECT_ID` or `IF COL_LENGTH`) and that `initialize()` requests `sp_getapplock` before running them. With `AZURE_SQL_SERVER` set, run `initialize()` twice against the same database and assert the second run changes nothing.
+
+**Boundary tests:** The fake AI and the memory store can't reveal mistakes at the edge of the real services, so assert those edges directly. Capture the request the Foundry generator sends through the OpenAI client and assert its exact fields: `model`, `messages`, `max_completion_tokens: 1500`, and no `max_tokens` or `temperature` for gpt-5 models. Record the parameters the SQL store binds, through a stub of the `mssql` request, and assert each value's SQL type and JavaScript type match its column (for example, a `DATE` column receives a JavaScript `Date` or `null`, not a string).
+
+**Seed tests:** Assert the exact seed IDs, statuses, and step completion states from both stores' seed paths, and assert that seeding twice doesn't duplicate rows. The same tests passing on both stores is the payoff of the repository pattern.
+
+**Red phase:** Add only stubs that throw `Not implemented`, so the suite compiles and fails on assertions. Commit the tests and stubs, and tag the commit `phase1-red`. When review findings add tests later, commit them as a new red commit and move the tag with `git tag -f phase1-red`.
+
+---
+
+## Quality Gate
+
+`package.json` scripts:
+
+| Script | Command |
+| --- | --- |
+| `build` | `tsc` |
+| `check` | `tsc -p tsconfig.check.json` followed by `vitest run` |
+| `test` | `vitest run` |
+| `start` | `func start` |
+| `azurite` | `azurite --silent --location .azurite` |
+| `seed` | `tsx src/data/seed.ts` |
+
+The Phase 1 gate passes when all three commands exit `0`:
+
+1. `npm run check` in `src/api`.
+2. `git diff --exit-code phase1-red -- src/api/test` from `journeys/smart-todo`.
+3. The checked-in verifier against the local API running with `DATA_PROVIDER=memory` and `AI_PROVIDER=fake`: `node ../../.github/scripts/verify-smart-todo.mjs --base-url http://localhost:7071`.
+
+The `api` CI job in [Continuous Integration](./PLAN.md#continuous-integration) runs commands 1 and 3 on every pull request.
 
 ---
 
 ## Phase 1 Acceptance Criteria
 
-- Repository interfaces and an Azure SQL factory isolate all database access from HTTP handlers.
+- Repository interfaces isolate all database access. Handlers receive a `DataStore` and a `StepGenerator` and never import `mssql` or `openai`.
+- `DATA_PROVIDER` and `AI_PROVIDER` select the memory or SQL store and the fake or Foundry generator, and unknown values fail at startup.
 - Seed data returns the three deterministic todos for `user-1`, including action steps for `todo-2` and `todo-3`.
 - Todo create, update, delete, cascade delete, and error envelopes match the API contracts.
-- `POST /api/todos/:id/generate-steps` returns 3-7 ordered steps when AI credentials are configured, or 503 with `AI_SERVICE_ERROR` after a failed retry.
-- Completing all action steps marks the parent todo `completed`; unchecking a step moves a completed todo back to `in_progress`.
+- `POST /api/todos/:id/generate-steps` returns 3–7 ordered steps, or 503 with `AI_SERVICE_ERROR` after a failed retry.
+- Completing all action steps marks the parent todo `completed`, and unchecking a step moves a completed todo back to `in_progress`.
+- The Decision Points answers are recorded on the issue and covered by tests.
+- The [Quality Gate](#quality-gate) passes, and the `api` check is green on the pull request.

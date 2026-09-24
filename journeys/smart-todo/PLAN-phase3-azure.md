@@ -1,8 +1,18 @@
 # SmartTodo Phase 3: Azure Deployment
 
-Deploy the completed application from the first two phases to Azure Functions Flex Consumption. Read [`PLAN.md`](./PLAN.md) first and treat the application behavior in [`PLAN-phase1-api.md`](./PLAN-phase1-api.md) and [`PLAN-phase2-ios.md`](./PLAN-phase2-ios.md) as fixed contracts.
+Review the cost and architecture, write a deterministic infrastructure gate, generate infrastructure that passes it, deploy the API to Azure Functions Flex Consumption, and turn what worked into a reusable skill and script. Read [`PLAN.md`](./PLAN.md) first and treat the application behavior in [`PLAN-phase1-api.md`](./PLAN-phase1-api.md) and [`PLAN-phase2-ios.md`](./PLAN-phase2-ios.md) as fixed contracts.
 
 README prompts use the exact section names in this document as stable references. If a section is renamed, update its README references in the same change.
+
+## Cost and Architecture Review
+
+Before any Bicep exists, the agent reviews this plan read-only and returns:
+
+1. **Monthly cost estimate:** A table with one row per resource in [Azure Resources](#azure-resources) and two columns: development use (one learner, a few hundred requests a month) and 10,000 monthly active users who each generate steps five times. State the SKU, the pricing assumptions, and the region, and link the Azure pricing page for each resource. Mark any number that is a guess.
+2. **Improvements:** Up to five changes across security, reliability, cost, and operations. For each, give the benefit, the monthly cost impact, the effort, and a recommendation of `adopt now` or `later`.
+3. **Risks:** Anything in this plan likely to fail in the learner's region or subscription.
+
+The review must not change files. The learner decides which improvements to adopt. An adopted improvement is added to this plan before the infrastructure is generated, because this plan is the contract that the generation, the gate, and the review all bind to. Record the decisions as a comment on the Phase 3 issue.
 
 ## Azure Deployment
 
@@ -44,13 +54,14 @@ hooks:
     run: ./infra/hooks/postprovision.js
 ```
 
-Single service only — no `web` service. The iOS app runs on device, not in Azure.
+Single service only, with no `web` service. The iOS app runs on the device, not in Azure.
 
 ### Flex Consumption Configuration
 
-- **Instance memory size:** 2048 MB (default, suitable for most API workloads)
-- **Per-function scaling:** Enabled automatically — each function (getTodos, generateSteps, etc.) scales independently
-- **Always ready instances:** Optional — set to 1 for the HTTP trigger group to eliminate cold starts during demos
+- **`functionAppConfig` (required):** `runtime` with `name: node` and a supported Node.js LTS `version`; `scaleAndConcurrency.instanceMemoryMB: 2048`; and `deployment.storage` of type `blobContainer` pointing at the `deploymentpackage` container URL, with `authentication.type: SystemAssignedIdentity`.
+- **Runtime storage through managed identity:** Set `AzureWebJobsStorage__accountName` to the storage account name instead of a connection string. The Function App identity's `Storage Blob Data Owner` role covers it.
+- **Scaling:** Flex Consumption scales per function, except that all HTTP-triggered functions in one app scale together as the HTTP group. All SmartTodo endpoints are HTTP triggers, so they scale as one group.
+- **Always ready instances:** Optional. Set 1 for the `http` group to eliminate cold starts during demos.
 
 ### Bicep Requirements
 
@@ -66,18 +77,41 @@ Single service only — no `web` service. The iOS app runs on device, not in Azu
 - If AVM parameter drift requires raw `Microsoft.CognitiveServices` resources, create the account first and deploy the model from a separate nested Bicep module that receives the created account name. Do not issue the account and model child operations concurrently; Azure can reject the child with `RequestConflict` while the parent is non-terminal.
 - **AI model version is region-specific** — use `az cognitiveservices model list --location <region> --query "[?model.name=='gpt-5-mini']"` to find the correct version before generating Bicep. For example, `westus` requires `2025-08-07` (not `2025-02-27`).
 - Outputs in SCREAMING_SNAKE_CASE: `API_URL`, `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `RESOURCE_GROUP_NAME`
-- Module parameters derived from `uniqueString()` must declare explicit `@minLength(13)`/`@maxLength(13)` constraints so the build emits no BCP334 warnings
+- Module parameters derived from `uniqueString()` must declare explicit `@minLength(13)`/`@maxLength(13)` constraints, and the deploying principal ID parameter must declare `@minLength(36)`/`@maxLength(36)`, so the build emits no BCP334 warnings
 - `azd-service-name: 'api'` tag on the Function App
-- Function App settings: `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`. `AZURE_SQL_SERVER` must be the SQL FQDN, not just the short server name.
+- Function App settings: `DATA_PROVIDER=sql`, `AI_PROVIDER=foundry`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, `AZURE_SQL_DATABASE`. `AZURE_SQL_SERVER` must be the SQL FQDN, not just the short server name.
 - **Do NOT include `FUNCTIONS_WORKER_RUNTIME` in app settings** — Flex Consumption sets this via `functionAppConfig.runtime`, and having it in app settings causes a deployment error
 - **Set `siteConfig.alwaysOn` to `false`** — the AVM module defaults to `true`, which is invalid for Flex Consumption
+- **Set Storage Account `allowSharedKeyAccess` to `false`.** The Function App and `azd deploy` use managed identity and Microsoft Entra authorization, so account keys aren't needed and would bypass them.
 - **Set Storage Account `networkAcls.defaultAction` to `Allow`** — the AVM module defaults to `Deny`, which blocks `azd deploy` zip uploads
-- **Flex Consumption `deploymentpackage` container** — `azd deploy` uploads the zip to a blob container named `deploymentpackage`. This container may not exist after first provisioning. If `azd deploy` fails with "The specified container does not exist", create it with `az storage container create --name deploymentpackage --account-name <name> --auth-mode login` and retry.
+- **Flex Consumption `deploymentpackage` container** — `azd deploy` uploads the zip to a blob container named `deploymentpackage`. Declare that container in Bicep (the [Infrastructure Gate](#infrastructure-gate) checks for it). If `azd deploy` still fails with "The specified container does not exist", create it with `az storage container create --name deploymentpackage --account-name <name> --auth-mode login` and retry.
 
-### .NET-Specific Notes
+### Environment Preparation
 
-- Use the `OpenAI` NuGet package for the `/openai/v1/` endpoint path.
-- Do NOT add `Microsoft.Azure.Functions.Worker.ApplicationInsights` or `Microsoft.ApplicationInsights.WorkerService`; App Insights is wired through infrastructure.
+Before provisioning, prepare the selected `azd` environment without creating any Azure resources and without running `azd up`:
+
+1. Register the `Microsoft.Web`, `Microsoft.Sql`, `Microsoft.CognitiveServices`, and `Microsoft.OperationalInsights` providers. Skip any that already report `Registered`.
+2. Resolve the subscription ID and the signed-in principal's login and object ID. Use principal type `User` for an interactive account and `ServicePrincipal` for a service principal.
+3. Set `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_LOGIN`, `AZURE_PRINCIPAL_ID`, and `AZURE_PRINCIPAL_TYPE` with `azd env set`, and set `AZURE_LOCATION` to `westus` unless the learner chose another region.
+4. Read each value and pass it as a literal argument. Don't use shell command substitution, so the steps work in PowerShell, Command Prompt, bash, and zsh.
+5. If a value is unavailable, stop and report it rather than guessing or setting a placeholder.
+
+To do it by hand, run these and pass each returned value to `azd env set`:
+
+```text
+az provider register --namespace Microsoft.Web
+az provider register --namespace Microsoft.Sql
+az provider register --namespace Microsoft.CognitiveServices
+az provider register --namespace Microsoft.OperationalInsights
+az account show --query id --output tsv
+az account show --query user.name --output tsv
+az ad signed-in-user show --query id --output tsv
+azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
+azd env set AZURE_PRINCIPAL_LOGIN <account-login>
+azd env set AZURE_PRINCIPAL_ID <principal-object-id>
+azd env set AZURE_PRINCIPAL_TYPE User
+azd env set AZURE_LOCATION westus
+```
 
 ### Post-Provision: Managed Identity SQL Access
 
@@ -87,25 +121,35 @@ Before provisioning, resolve and set the complete Entra administrator contract: 
 
 The JavaScript hook must use argument arrays, not interpolated shell commands. On Mac and Linux, invoke executables directly. On Windows, use the static PowerShell JSON-payload launcher from the `container-apps-deployment` skill for Azure CLI shims rather than passing `.cmd` files directly to `execFileSync()` or `spawnSync()`. It must:
 
-1. Fail before making Azure changes if `az`, `azd`, `node`, or `sqlcmd` is unavailable.
+1. Fail before making Azure changes if `az`, `azd`, `node`, or `sqlcmd` is unavailable. Run these checks through the same launcher as every other command, so a Windows `az.cmd` shim is found.
 2. Read `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, and `RESOURCE_GROUP_NAME` through `azd env get-value`.
 3. Normalize the SQL server to both its short name and `<name>.database.windows.net` FQDN in JavaScript.
 4. Read the server's current Azure SQL connection policy. If it is `Redirect`, temporarily change it to `Proxy` so developer-host traffic stays on port 1433 instead of redirecting to ports 11000–11999.
 5. Obtain the developer's public IP with Node.js HTTPS/fetch, create a uniquely named temporary SQL firewall rule, and register cleanup in a `finally` block.
-6. Invoke `sqlcmd` with `--authentication-method ActiveDirectoryAzCli` to create the Function App managed-identity user and grant `db_datareader`, `db_datawriter`, and `db_ddladmin`. Escape SQL identifiers and string values before constructing the statement.
-7. Invoke `sqlcmd` again with `-i infra/hooks/postprovision-schema.sql` to apply the idempotent schema and seed data.
-8. In `finally`, delete the temporary firewall rule and restore the original SQL connection policy even if schema creation fails.
-9. Print `Post-provision SQL setup complete.` only after every required step succeeds.
+6. Invoke `sqlcmd` with `--authentication-method ActiveDirectoryAzCli` to create the Function App managed-identity user and grant `db_datareader`, `db_datawriter`, and `db_ddladmin`. Escape SQL identifiers and string values before constructing the statement. `db_ddladmin` lets the API apply its own migrations at startup.
+7. In `finally`, delete the temporary firewall rule and restore the original SQL connection policy even if a step fails.
+8. Print `Post-provision SQL setup complete.` only after every required step succeeds.
+
+The hook doesn't create tables or seed data. The API does that at startup, under a lock (see the Data Access Layer section of [`PLAN-phase1-api.md`](./PLAN-phase1-api.md#data-access-layer)), so every deployment path, including the Phase 4 release pipeline, ships schema changes with the code.
+
+**`--dry-run`:** With this flag, the hook prints `DRY RUN`, reports each of `node`, `az`, `azd`, and `sqlcmd` as `FOUND` or `MISSING` by running it through the same launcher as a real run, prints the steps it would take, and exits `0`. It returns before reading the `azd` environment or calling Azure. The infrastructure gate runs it with no tools on `PATH`; the `windows` CI job runs it with `az` and `azd` installed and fails if either is reported `MISSING`, which proves the Windows launcher path.
 
 The hook must be idempotent and must never print secrets, connection strings, or firewall rule contents. Do not use shell traps, command substitution, `curl`, `grep`, or OS-specific path syntax in the generated hook.
 
-### Database Schema Initialization
+Hook details that are easy to get wrong:
 
-Also generate `infra/hooks/postprovision-schema.sql` with the CREATE TABLE statements from [Database Schema (SQL)](./PLAN-phase1-api.md#database-schema-sql) and the seed rows from [Seed Data](./PLAN-phase1-api.md#seed-data). Make it idempotent (`IF OBJECT_ID(...) IS NULL` around DDL; only insert seed rows when the Todos table is empty) so re-running the hook is safe. The post-provision hook runs it after the managed identity setup so the deployed API and iOS app return data immediately.
+- Write it as **CommonJS** (`require()` and `__dirname`), not `import`/`export`. The workspace has no `package.json` that declares ES modules, so Node reparses ES module syntax with a warning.
+- `az sql server firewall-rule delete` has **no `--yes` flag**. Passing it fails the cleanup and leaves the temporary firewall rule open.
+- Pass `--output none` to Azure CLI commands that create or delete firewall rules or change the connection policy, so their JSON (which includes your public IP) never reaches the `azd` log.
+- When a step fails, include the step name and the sanitized CLI error in the final message, not just "setup failed".
+- Set the cleanup flag **before** the command that creates the temporary firewall rule returns, and don't call `.trim()` or other string methods on command output that may be `null`. With `--output none`, Node's `execFileSync` returns `null` for ignored stdout, and a `.trim()` on it throws right after the rule exists, skipping cleanup.
+- Before creating its temporary rule, delete any leftover firewall rules whose names start with the hook's temporary prefix (for example, `SmartTodoSetup-`). A run that's killed before `finally` runs leaves its rule open.
+- Tests must never execute the hook or any other command that changes Azure. Test the hook's pure functions, or read its source.
+- `azd up` skips provisioning, and so skips this hook, when the infrastructure hasn't changed. After you fix the hook, run `node infra/hooks/postprovision.js` directly rather than expecting a rerun of `azd up` to execute it.
 
 ### Mobile Distribution
 
-The iOS app is NOT deployed via azd. To test: replace the `Config.swift` `apiBaseURL` with the deployed URL (`azd env get-value API_URL`) and run from Xcode on the Simulator (⌘R). For physical devices, use the deployed URL with a development signing profile.
+The iOS app is NOT deployed via azd. To test it against Azure, set `Config.apiBaseURL` to the deployed URL (`azd env get-value API_URL`) and run it from Xcode on the Simulator. For physical devices, use the deployed URL with a development signing profile.
 
 ### Known Deployment Gotchas
 
@@ -119,6 +163,74 @@ The iOS app is NOT deployed via azd. To test: replace the `Config.swift` `apiBas
 
 ---
 
+## Infrastructure Gate
+
+Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turns the prose in [Azure Deployment](#azure-deployment) into checks with a deterministic exit code. Running it before `infra/` exists must fail. That is the red phase for infrastructure.
+
+**Portability:** Resolve every path relative to the project directory (the parent of the script's `scripts/` folder), not the current working directory, so CI can run it from the repository root. Use only the Node.js standard library, so the scaffold script can copy the gate into another project. Invoke CLIs with argument arrays and `shell: false`. On Windows, use the PowerShell JSON-payload launcher pattern from `.github/scripts/_utils.mjs`, copied into the script rather than imported.
+
+**Checks.** Print one `PASS` or `FAIL` line per check with a short reason, then exit `1` if any check failed:
+
+1. **Files:** `azure.yaml`, `infra/main.bicep`, `infra/main.parameters.json`, and `infra/hooks/postprovision.js` exist.
+2. **azure.yaml:** Exactly one service, named `api`, with `project: ./src/api`, `host: function`, and `language: ts`. `hooks.postprovision.run` is `./infra/hooks/postprovision.js`, and there is no `shell: sh`.
+3. **Hook:** `node --check infra/hooks/postprovision.js` passes. The hook contains no `curl`, `grep`, or `shell: true`, no top-level `import` or `export` statements, and no `--yes` argument in a `firewall-rule` command. It contains no `CREATE TABLE`, no `INSERT INTO`, and no reference to a schema SQL file, and `infra/hooks/postprovision-schema.sql` doesn't exist, because the API owns the schema. Running `node infra/hooks/postprovision.js --dry-run` with `PATH` set to only the Node.js directory exits `0` and prints `DRY RUN`, which proves dry-run needs neither Azure tools nor the `azd` environment.
+4. **Build:** `az bicep build --file infra/main.bicep --stdout` exits `0`, prints valid JSON, and reports no warnings. Ignore the Bicep CLI's "a new Bicep release is available" notice, which is not a template warning.
+5. **Lint:** `az bicep lint --file infra/main.bicep` exits `0` and reports no warnings or errors.
+6. **Contract rules** on the compiled JSON. Walk the whole tree, including nested module templates. Evaluate literal values and `{ "value": ... }` parameter assignments. Ignore parameter declarations (objects with a `type` key). For ARM expressions (strings that start with `[`), search for the required literal inside the expression: child resource names compile to `format()` expressions such as `[format('{0}/{1}', ..., 'AllowAzureServices')]`, and tags built with `union()` compile to expressions too.
+   - **Only deployable resource properties count.** `metadata`, outputs, variables, and comments never satisfy a rule. An agent that can't pass a rule must change the real resource or report the gap. It must not add a literal elsewhere to satisfy the check.
+   - The top-level outputs include `API_URL`, `SQL_SERVER_NAME`, `SQL_DATABASE_NAME`, `FUNCTION_APP_NAME`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, and `RESOURCE_GROUP_NAME`.
+   - App setting names include `DATA_PROVIDER`, `AI_PROVIDER`, `AZURE_AI_ENDPOINT`, `AZURE_AI_DEPLOYMENT`, `AZURE_AI_KEY`, `AZURE_SQL_SERVER`, and `AZURE_SQL_DATABASE`. No app setting is named `FUNCTIONS_WORKER_RUNTIME`.
+   - Every literal `zoneRedundant` and `alwaysOn` is `false`, and every literal storage `defaultAction` is `Allow`.
+   - The `FC1` SKU, a `deploymentpackage` blob container, the `azd-service-name: api` tag, and a `gpt-5-mini` or `gpt-4.1` model deployment appear.
+   - A `functionAppConfig` object appears with `runtime`, `scaleAndConcurrency`, and `deployment.storage`. Where they are literals, `runtime.name` is `node`, `instanceMemoryMB` is `2048`, and the deployment storage authentication type is `SystemAssignedIdentity`. An app setting named `AzureWebJobsStorage__accountName` appears, and no app setting named `AzureWebJobsStorage` holds a connection string.
+   - A SQL firewall rule named `AllowAzureServices` uses `0.0.0.0` for both addresses, and no firewall rule name contains `windows` in any letter case.
+   - Both role definition IDs from [Bicep Requirements](#bicep-requirements) appear.
+   - Every literal storage `allowSharedKeyAccess` is `false`.
+   - When raw `Microsoft.CognitiveServices/accounts/deployments` resources appear, they're in a nested deployment separate from the template that creates the account.
+7. **Preview** (skipped with `--offline`): Confirm that `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, and `AZURE_PRINCIPAL_TYPE` are set in the selected `azd` environment, then run `azd provision --preview --no-prompt` and require exit `0`. This asks Azure for a what-if result without creating resources.
+
+The script never prints secrets or app setting values. The `infra` CI job runs it with `--offline` because CI has no Azure credentials.
+
+**Gate:** `node scripts/check-infra.mjs --offline` must pass before a pull request merges, and `node scripts/check-infra.mjs` must pass before `azd up`.
+
+## Reusable Infrastructure Skill
+
+After a successful deployment, capture what worked as a skill at `.github/skills/flex-functions-sql-foundry/SKILL.md` in the workspace root (not under `journeys/smart-todo`), so the next project doesn't rediscover it:
+
+- YAML frontmatter with `name` and a `description` that includes `USE FOR:` and `DO NOT USE FOR:` lists.
+- When to use it: an Azure Functions Flex Consumption API with Azure SQL through managed identity and Microsoft Foundry.
+- The inputs it needs: app name, runtime language, region, and model.
+- The resource contract and the Known Deployment Gotchas, including any new gotchas from this run's pull request "Problems and fixes" notes and `known-limitation` issues.
+- The gate: run `scripts/check-infra.mjs` and don't deploy until it passes.
+- The fast path: run `scripts/scaffold-infra.mjs` first, and generate only what the scaffold doesn't cover.
+
+Keep it under 200 lines. It must not contain subscription IDs, principal IDs, resource names from this run, or secrets.
+
+## Deterministic Scaffold
+
+Generate `scripts/scaffold-infra.mjs`, which reproduces the validated infrastructure with no AI and no network:
+
+- Usage: `node scripts/scaffold-infra.mjs --target <directory> --name <app-name>`.
+- Use only the Node.js standard library. Validate that `--name` matches `^[a-z][a-z0-9-]{2,30}$`.
+- Refuse to run when the target exists and isn't empty, or when the target is inside the source project (otherwise the copy includes itself).
+- Copy `infra/`, `azure.yaml`, and `scripts/check-infra.mjs` into the target with the same relative layout. Don't copy `.azure/`, compiled JSON, `node_modules/`, or any `.env` file.
+- Replace the `name:` value and the `metadata.template` prefix in the copied `azure.yaml` with the new app name.
+- Print the copied files and the next steps: add the API under `src/api`, run `node scripts/check-infra.mjs --offline`, then set the `azd` environment values and deploy.
+
+**Proof:** Scaffold into a new directory under the operating system's temporary directory, run `node scripts/check-infra.mjs --offline` inside it, confirm it passes, and delete the temporary directory.
+
+---
+
 ## Deployment Acceptance Criteria
 
-Deployment is complete only when every required check passes: post-provision prints `Post-provision SQL setup complete.`, the checked-in verifier passes seed reads, create, AI generation, step completion, deletion, and final absence, and the iOS app can call the deployed HTTPS `API_URL`. The journey README owns the command that executes these deployment checks. After completing the README assignment, run `azd down --force --purge`.
+Deployment is complete only when every required check passes:
+
+- The cost and architecture decisions are recorded on the Phase 3 issue.
+- `node scripts/check-infra.mjs` passes before `azd up`.
+- Post-provision prints `Post-provision SQL setup complete.`
+- The checked-in verifier passes against the deployed API and prints its `PASS` line.
+- The iOS app can call the deployed HTTPS `API_URL`.
+- The reusable skill exists, and the scaffold proof passes.
+- The `infra` check is green on the pull request.
+
+The journey README owns the commands that run these checks. After completing the journey, run `azd down --force --purge`.

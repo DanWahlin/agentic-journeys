@@ -1,837 +1,617 @@
 # SmartTodo - AI-Powered Task App
 
-> ✨ **Turn a fuzzy goal into a step-by-step action plan with Azure Functions, Azure SQL, and Microsoft Foundry.**
+> ✨ **Build an iPhone app and its Azure backend the way teams ship with agents: issues first, a plan interview, failing tests before code, and gates that decide what ships.**
 
 <p align="center">
   <img src="./images/smart-todo-hero.webp" alt="SmartTodo — AI-Powered Task Breakdown" width="800" />
 </p>
 
-You'll build SmartTodo, an iPhone app that turns a todo such as "Prepare conference talk" into concrete steps you can check off. The backend runs on Azure Functions Flex Consumption, Azure SQL stores the data, and gpt-5-mini on Microsoft Foundry generates the plan. Pick your language (Node.js, Python, .NET, or Java), give GitHub Copilot the spec, and use it to scaffold the API, generate the SwiftUI screens, and deploy the backend to Azure.
+You'll build SmartTodo, an iPhone app that turns a todo such as "Prepare conference talk" into concrete steps you can check off. The API runs on Azure Functions Flex Consumption, Azure SQL stores the data, and gpt-5-mini on Microsoft Foundry writes the steps.
+
+Deploying to Azure is the easy part for an agent. Getting a result that's worth deploying is the hard part. So you won't paste giant prompts and watch. You'll make the decisions, review the tests, and let deterministic gates, not the agent's opinion, decide when work is done. At the end, you'll automate the whole loop into a factory that delivers the next feature from a GitHub issue.
 
 ## Learning Objectives
 
-- Use a spec document as shared context for GitHub Copilot to scaffold a serverless API and iOS app together
-- Build an Azure Functions API in your language of choice with the repository pattern
-- Connect Azure Functions to Azure SQL using managed identity, with no passwords in code
-- Call gpt-5-mini via Microsoft Foundry to decompose vague goals into actionable steps
-- Structure a SwiftUI app that talks to a cloud API with async/await networking
-- Deploy the backend to Azure Functions Flex Consumption with `azd` and point the iOS app at the live URL
+- Turn an architecture diagram into GitHub issues and interview the plan with the `grill-plan` skill before any code exists
+- Drive an agent with red/green test-driven development using the `tdd-builder` custom agent, `/autopilot`, `/plan`, and `/fleet`, and prove the agent didn't change the tests
+- Gate every phase with commands that have exit codes: unit and contract tests, a black-box API verifier, iOS UI tests, and an infrastructure check
+- Ship through GitHub with worktrees, stacked pull requests, required checks, Copilot code review, and auto-merge
+- Ask an agent what the architecture costs and how to improve it, then deploy Azure Functions, Azure SQL with managed identity, and Microsoft Foundry with `azd`
+- Turn what worked into a reusable skill, a deterministic script that needs no AI, and a Copilot cloud agent setup for the next feature
 
-> 💰 **Estimated Cost**: ~$10–30/month while the resources exist (Functions Flex, SQL Basic, and AI usage; see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure when you finish the journey.
+> 💰 **Estimated Cost**: ~$10–30/month while the Azure resources exist, plus about 3,000–4,500 Copilot AI credits for the whole journey (see [Cost Breakdown](#cost-breakdown)). Phases 0 to 2 need no Azure resources. Complete the [Cleanup](#cleanup) procedure when you finish.
 
 ## Prerequisites
 
-The backend phases support Windows PowerShell, Mac, and Linux. Phase 2 simulator testing requires Mac and Xcode.
-
 | Host tool | Requirement | Purpose | Validation |
 | --- | --- | --- | --- |
-| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | Required | Authenticate and manage Azure resources | `az version` |
-| [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.28.0 or later | Required | Provision and remove the deployment | `azd version` |
-| [Node.js](https://nodejs.org/en/download) LTS or later | Required | Run hooks, the verifier, and the default API stack | `node --version` |
-| [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools) v4 | Required for local API execution | Run the Functions host | `func --version` |
-| [Azurite](https://learn.microsoft.com/azure/storage/common/storage-use-azurite#install-azurite) | Required when local settings use `UseDevelopmentStorage=true` | Emulate Functions storage locally | `npx azurite --version` |
-| Go-based [`sqlcmd`](https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-download-install) | Required for Phase 3 | Configure managed-identity database access and apply the schema | `sqlcmd --version` |
-| [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) | Required for the documented CLI path | Run the coding agent | `copilot --version` |
-| [Docker](https://docs.docker.com/get-started/get-docker/) | Optional | Run SQL Server locally instead of using Azure SQL | `docker version` |
-| [Python](https://www.python.org/downloads/) 3.10+, [.NET](https://dotnet.microsoft.com/download) 8+, or [Eclipse Temurin JDK](https://adoptium.net/temurin/releases/?version=25) 25 LTS or later | Required only when selected instead of the default Node.js API | Run the selected API stack | `python --version`, `dotnet --version`, or `java --version` |
-| [Xcode](https://developer.apple.com/xcode/) | Required only for Phase 2 simulator testing | Build and run the SwiftUI client | `xcodebuild -version` |
+| [GitHub CLI](https://cli.github.com/) | Required | Issues, pull requests, and repository settings | `gh auth status` |
+| [Git](https://git-scm.com/downloads) 2.20 or later | Required | Branches and worktrees | `git --version` |
+| [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) | Required | Run the coding agent | `copilot --version` |
+| [Node.js](https://nodejs.org/en/download) LTS or later | Required | API, scripts, hooks, and the verifier | `node --version` |
+| [Azure Functions Core Tools](https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools) v4 | Required | Run the API locally | `func --version` |
+| [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) | Required for Phase 3 | Bicep build and lint, and Azure sign-in | `az version` |
+| [Azure Developer CLI (`azd`)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd) 1.28.0 or later | Required for Phase 3 | Preview, provision, and remove the deployment | `azd version` |
+| Go-based [`sqlcmd`](https://learn.microsoft.com/sql/tools/sqlcmd/sqlcmd-download-install) | Required for Phase 3 | Managed-identity database access and schema | `sqlcmd --version` |
+| [Xcode](https://developer.apple.com/xcode/) with an iOS simulator runtime | Required only for running Phase 2 on your machine | Build and test the SwiftUI app | `xcodebuild -version`, then `xcrun simctl list runtimes` shows an iOS runtime |
 
-Run these read-only checks on the host machine before Phase 1:
+You also need a GitHub account and an Azure subscription. Copilot code review and the Copilot cloud agent (Phase 4) need a Copilot plan that includes them. If yours doesn't, the journey tells you what to do instead at each of those steps, and every gate still runs.
 
-```text
-az version
-az account show --output table
-azd version
-node --version
-func --version
-npx azurite --version
-copilot --version
-```
-
-Before Phase 3, also run `sqlcmd --version`. Run `docker version` only when you select local SQL Server. Run the validation command for the selected alternative API runtime before generating that API. On Mac, run `xcodebuild -version` before Phase 2.
-
-Confirm that `az account show` identifies the intended subscription, `azd` is version 1.28.0 or later, Node.js is a currently supported LTS release, and Functions Core Tools reports major version 4. Stop and fix the prerequisite if a required check fails. The [cross-platform installation guide](../../docs/tool-installation.md) provides Windows, Mac, and Linux installation options.
-
-Before Phase 3, `azd` needs the complete `AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, and `AZURE_PRINCIPAL_TYPE` group, which the Azure SQL Entra admin assignment depends on. [Phase 3, Step 2](#step-2-deploy) has GitHub Copilot resolve and set these for you; the type is `User` for an interactive account and `ServicePrincipal` for automation.
+Run the validation commands before Phase 0, and confirm that `az account show --output table` shows the intended subscription before Phase 3. If Xcode lists no iOS runtime, run `xcodebuild -downloadPlatform iOS` (about 8 GB). The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options.
 
 > [!IMPORTANT]
-> **Platform gate:** The full journey, including Phase 2 simulator testing, requires Mac and Xcode. On Windows or Linux, generate and statically verify the SwiftUI source, then complete Phase 1 and Phase 3 and verify the deployed API with HTTP calls. That completes the Azure path.
+> **Platform gate:** Every phase works on Windows, Mac, and Linux except running the iOS app. On Windows or Linux, you can still generate the SwiftUI app in Phase 2. The `ios` CI check runs its tests on a GitHub-hosted macOS runner.
 
 > [!NOTE]
-> GitHub Copilot CLI is the documented and validated command-line path. You may adapt the prompts for another agentic coding tool. For another tool, run: **"Copy or adapt this repository's `.github/skills` into your supported skills or instructions location, preserving their behavior and reporting anything unsupported."**
-
-### Acceptance criteria
-
-The backend is complete when:
-
-- [ ] The local or deployed API lists the three seed todos for `userId=user-1`.
-- [ ] Creating a todo returns HTTP 201.
-- [ ] `generate-steps` returns 3–7 steps when AI credentials are configured.
-- [ ] Completing a step persists `isCompleted: true`.
-- [ ] Deleting the temporary todo returns HTTP 204 and removes it from the final list.
-
-On Mac, the client phase is complete when the simulator performs the create, generate, and complete flow against the selected API. On Windows or Linux, generated SwiftUI source inspection plus a passing deployed-backend verifier completes the Azure path.
-
-The journey is complete after the [Cleanup](#cleanup) procedure removes the Azure resources.
+> GitHub Copilot CLI is the documented and validated command-line path. For another agentic coding tool, run: **"Copy or adapt this repository's `.github/skills` and `.github/agents` into your supported locations, preserving their behavior and reporting anything unsupported."**
 
 ---
 
 ## Architecture
 
-```mermaid
-graph TB
-    subgraph Client["iOS Device"]
-        APP["SwiftUI App<br/>(Todo List · Detail · Action Steps)"]
-    end
+<p align="center">
+  <img src="./images/architecture.png" alt="SmartTodo architecture: a SwiftUI iPhone app calls an Azure Functions API that uses Azure SQL through managed identity, Microsoft Foundry gpt-5-mini through an API key, a storage account, and Application Insights with Log Analytics" width="900" />
+</p>
 
-    subgraph RG["Azure Resource Group"]
-        LA["Log Analytics Workspace"]
-
-        subgraph Functions["Azure Flex Functions"]
-            API["API<br/>(Your Language · Azure Functions)"]
-        end
-
-        SQL["Azure SQL Database<br/>(Todos + Action Steps)"]
-
-        subgraph Foundry["Microsoft Foundry"]
-            GPT["gpt-5-mini<br/>(Task Decomposition)"]
-        end
-
-        STOR["Storage Account<br/>(Functions runtime + deployment package)"]
-
-        AI["Application Insights"]
-    end
-
-    APP -->|HTTPS| API
-    API -->|Managed Identity| SQL
-    API -->|API key · OpenAI-compatible API| GPT
-    Functions -->|Managed Identity<br/>Storage Blob Data Owner| STOR
-    Functions -->|diagnostics| AI
-    AI -->|logs| LA
-
-    style Client fill:#f5f5f5,stroke:#333
-    style RG fill:#e8f4fd,stroke:#0078D4
-    style Functions fill:#f0f9ff,stroke:#50e6ff
-    style API fill:#fff,stroke:#0078D4
-    style SQL fill:#fff,stroke:#0078D4
-    style Foundry fill:#f0f9ff,stroke:#50e6ff
-    style GPT fill:#fff,stroke:#0078D4
-    style STOR fill:#fff,stroke:#0078D4
-    style LA fill:#fff,stroke:#50e6ff
-    style AI fill:#fff,stroke:#50e6ff
-```
-
-**Azure resources created:**
-
-- **Azure Flex Functions**: Serverless hosting for the API (Flex Consumption plan)
-- **Azure SQL Database**: Stores todos and AI-generated action steps
-- **Microsoft Foundry** (AIServices): gpt-5-mini for task decomposition
-- **Application Insights + Log Analytics**: Monitoring and diagnostics
-- **Storage Account**: Required by Functions runtime
+Phase 3 creates these resources in one resource group: Azure Functions (Flex Consumption) for the API, Azure SQL Database for todos and steps, Microsoft Foundry with gpt-5-mini for task decomposition, a storage account for the Functions runtime, and Application Insights with Log Analytics for monitoring.
 
 ---
 
 ## The Spec
 
-SmartTodo is driven by a small set of linked specs. [`PLAN.md`](./PLAN.md) defines the vision, shared decisions, phase boundaries, and end-to-end acceptance criteria. Each phase has a focused implementation plan:
+SmartTodo is driven by a small set of linked plans. The agent reads them, and so do you when a prompt points at a section.
 
-| Phase | Spec |
-| --- | --- |
-| Build the API and AI integration | [`PLAN-phase1-api.md`](./PLAN-phase1-api.md) |
-| Build the iOS app | [`PLAN-phase2-ios.md`](./PLAN-phase2-ios.md) |
-| Deploy to Azure | [`PLAN-phase3-azure.md`](./PLAN-phase3-azure.md) |
+| Phase | Plan | You'll use it for |
+| --- | --- | --- |
+| 0. Plan the work | [`PLAN.md`](./PLAN.md) | Issues, quality gates, CI, repository rules, and branches |
+| 1. API test-first | [`PLAN-phase1-api.md`](./PLAN-phase1-api.md) | API contracts, Decision Points, and the test strategy |
+| 2. iOS from mockups | [`PLAN-phase2-ios.md`](./PLAN-phase2-ios.md) and [`images/mockups/`](./images/mockups/) | Screens, the API client, and iOS tests |
+| 3. Azure with gates | [`PLAN-phase3-azure.md`](./PLAN-phase3-azure.md) | Cost review, infrastructure contract, and the infrastructure gate |
+| 4. The factory | [`PLAN-phase4-factory.md`](./PLAN-phase4-factory.md) | Definition of done, the cloud agent, and the release pipeline |
 
-Read the [`PLAN.md` overview](./PLAN.md) before you start to understand the target application, shared technology decisions, phase boundaries, and end-to-end acceptance criteria. Then use the linked section in the current phase plan to identify the exact contract for the work you are about to generate. This keeps implementation context focused while preserving stable contracts between phases.
-
-**Core data model (the parts you'll build):**
-
-| Entity | Key Fields | Purpose |
-|--------|-----------|---------|
-| **Todo** | id, title, status, userId, stepsGenerated | Top-level task entered by the user |
-| **ActionStep** | id, todoId, title, description, order, isCompleted | AI-generated sub-task with actionable detail |
-
-**API endpoints you'll generate:**
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/api/todos` | List todos for a user |
-| `POST` | `/api/todos` | Create a new todo |
-| `PATCH` | `/api/todos/:id` | Update a todo's title or status |
-| `DELETE` | `/api/todos/:id` | Delete a todo and its steps |
-| `POST` | `/api/todos/:id/generate-steps` | AI-generate action steps from the todo title |
-| `PATCH` | `/api/todos/:id/steps/:stepId` | Toggle a step's completion |
+Skim [`PLAN.md`](./PLAN.md) before you start. You don't need to read the phase plans end to end. Each prompt names the section that matters.
 
 ---
 
-## The Journey
+## How This Journey Works
 
-SmartTodo is built in three phases that combine incremental generation, inspection, testing, review, and deployment. [`PLAN.md`](./PLAN.md) is the shared overview, and each phase prompt names the focused plan it needs.
-
-**How this journey works:** You won't paste one giant prompt and hope for a finished app. You'll work incrementally. Ask GitHub Copilot for one piece, inspect what it generated, test it, fix what needs attention, and then continue. The loop is simple: generate → inspect → test → refine.
-
-**What AI model should I choose?**
-
-Use a capable frontier model for architecture decisions, changes spanning several files, and difficult debugging because it will generally follow the specification more reliably and produce more complete results, though it may take longer and consume more premium requests or incur higher usage costs. Smaller models are often sufficient for focused coding, test updates, and clearly identified fixes. If a smaller model misses requirements or struggles to connect the overview, phase plan, API, and iOS client details, switch to a frontier model; choose based on task complexity rather than a specific model name.
-
-> **💡 Tip: Track issues as you go.** Add *"If you encounter any issues, log them to issues.md so they can be tracked and fixed"* to your prompt. GitHub Copilot creates `issues.md` at `journeys/smart-todo/issues.md` in your workspace the first time it has something to record. This keeps generation and deployment problems in one place while you iterate.
-
-> [!IMPORTANT]
-> **When something fails**
-> These journeys are designed to provide a solid starting point, but you may encounter errors along the way due to the non-deterministic nature of AI code generation. If a command or process fails, follow these steps to get help:
->
-> 1. Stay in the same AI coding session so it retains the journey context.
-> 2. Paste the exact command and relevant error output. Don't paraphrase the error.
-> 3. Include your operating system, shell, current phase, and last successful step.
-> 4. Remove passwords, tokens, connection strings, keys, cookies, and `.env` values before pasting.
-> 5. Ask the agent to inspect the relevant application and Azure logs, explain the root cause, make the smallest safe fix, rerun the failed step, and run the journey verifier.
-> 6. Record the problem and resolution in `issues.md` in the SmartTodo workspace.
->
-> Use this prompt:
->
-> ```text
-> The following command failed during <journey phase> on <OS and shell>:
->
-> <exact command>
->
-> Relevant error output:
->
-> <redacted error output>
->
-> Inspect the relevant application and Azure logs, explain the root cause,
-> make the smallest safe fix, rerun the failed step, and run the journey
-> verifier. Record the issue and resolution in issues.md. Do not print secrets.
-> ```
-
-> **Note on the iOS app:** The SwiftUI app runs on your Mac (Simulator) or iPhone. It is NOT deployed by `azd`. Only the Azure backend is. The app points at the deployed API URL via a `Config.swift` file.
-
-### Phase 1: Build the API
-
-<p align="center">
-  <img src="./images/phase1-api.webp" alt="Phase 1: Building the API" width="800" />
-</p>
-
-> **📋 Local database setup:** This API uses Azure SQL. For local development, you have two options:
-> 1. **Use Azure SQL directly (simplest):** Create a free-tier Azure SQL database in the portal and put its connection details in `local.settings.json`. This works on any computer.
-> 2. **Run SQL Server locally in Docker:** Set `AZURE_SQL_SERVER=localhost`, `AZURE_SQL_USER=sa`, and a password you generate in `local.settings.json`. The SQL Server container doesn't run on every machine, so if it won't start, use option 1 instead of troubleshooting it.
->
-> Either way, Phase 3 creates the production Azure SQL database for you.
-
-Because the default settings use `AzureWebJobsStorage=UseDevelopmentStorage=true`, start Azurite before `func start`. Install and verify it using the [cross-platform tool guide](../../docs/tool-installation.md#azurite).
-
-You'll build the API in stages, not all at once. Each step teaches a different aspect of working with GitHub Copilot.
-
-#### Step 1: Set up the project
-
-Keep this README open, but generate the application in a separate workspace so the journeys repository stays clean and the application can become its own GitHub repository.
-
-From the journeys repository root, start GitHub Copilot CLI:
+Every phase runs the same loop:
 
 ```text
-copilot
+issue ─► grill the plan ─► red: failing tests ─► green: code ─► gates ─► review ─► merge
 ```
 
-Then run the following prompt. If you have a specific folder where you'd like to create the `smart-todo-workspace`, adjust the prompt accordingly.
+| You | The agent |
+| --- | --- |
+| Answer the plan interview questions | Asks the questions and records the decisions on the issue |
+| Read the test names and fix what's missing | Writes the failing tests and the code that makes them pass |
+| Run the gate commands and believe only their exit codes | Runs the same gates before it says it's done |
+| Triage review findings | Fixes them through another red/green loop |
+
+Steps marked 🐙 use GitHub.com features and need your own repository.
+
+**Which model?** Use a frontier model for the plan interview, the red phases, and infrastructure. Smaller models are often enough for green phases, because the tests tell them exactly when they're done. Check spending with `/usage`; the [Cost Breakdown](#cost-breakdown) shows what each phase costs.
+
+**Without Copilot code review:** leave it out of the ruleset, and run `/review` before you open each pull request instead. Triage its findings with the same rules. Everything else is unchanged.
+
+<details>
+<summary><strong>When something fails</strong></summary>
+
+AI code generation isn't deterministic, so expect an occasional failure. Stay in the same Copilot session, remove secrets from the output, and use this prompt:
+
+```text
+The following command failed during <journey phase> on <OS and shell>:
+
+<exact command>
+
+Relevant error output:
+
+<redacted error output>
+
+Inspect the relevant application and Azure logs, explain the root cause,
+make the smallest safe fix, rerun the failed step, and run the phase gate.
+Note the problem and fix for the pull request's "Problems and fixes"
+section. Do not print secrets.
+```
+
+</details>
+
+---
+
+## Phase 0: Plan the Work
+
+### Step 1: Create the workspace
+
+Generate the application in a separate workspace so this repository stays clean and the application becomes its own GitHub repository. From this repository's root, start `copilot` and run:
 
 ```
-> Create a standalone SmartTodo workspace in a sibling directory named
-  smart-todo-workspace next to this repository. Stop and ask before changing
-  anything if that directory already exists and is not empty.
-  Preserve the existing folder structure by copying these directories into
-  the workspace:
-  - journeys/smart-todo
-  - .github/agents
-  - .github/skills
-  - .github/scripts
-  - docs
-  Initialize a Git repository at the workspace root and add a root .gitignore that
-  excludes secrets and generated files, including .env and .env.* while
-  allowing .env.example, plus .azure/, local.settings.json, node_modules/,
-  dist/, build/, coverage/, and Xcode artifacts such as *.xcuserstate,
-  xcuserdata/, and DerivedData/.
-  Do not modify the source journeys repository. When finished, show the
-  workspace path and the files copied.
+> Create the SmartTodo workspace described in the "Workspace Setup" section
+  of journeys/smart-todo/PLAN.md, then show me its path and first commit.
 ```
 
-End that Copilot session, then change to the new workspace:
+The workspace copies the journey, agents, skills, and scripts, adds a `.gitignore` that keeps secrets out, and starts a Git repository.
+
+End that session, change to the new workspace, and start a new session there. You'll work from this directory for the rest of the journey:
 
 ```text
 cd ../smart-todo-workspace/journeys/smart-todo
-```
-
-Now configure `azd` to reuse the signed-in Azure CLI session:
-
-```text
-azd config set auth.useAzCliAuth true
-```
-
-The command must exit successfully.
-
-Start a new [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) session or your chosen agentic coding tool from the `journeys/smart-todo` directory.
-
-```text
 copilot
 ```
 
-If you haven't installed the Azure Skills plugin yet, do it now. This one-time setup adds deployment tools, Bicep schema lookups, and infrastructure generation; see the root [Quick Start](../../README.md#quick-start) for details.
+If you haven't installed the Azure Skills plugin yet, do it now:
 
 ```
 > /plugin marketplace add microsoft/azure-skills
 > /plugin install azure@azure-skills
 ```
 
-#### Step 2: Generate the data models and data layer
-
-Start with the data models and repository pattern, not the full API. This lets you inspect the generated code before building on top of it. **Generate the project first**, then align `local.settings.json` with the template below.
-
-> **Default stack:** Node.js + TypeScript + Azure Functions v4. Prefer another language? Swap it in the prompt and use the [Choose Your Stack table](./PLAN-phase1-api.md#choose-your-stack) in `PLAN-phase1-api.md`. Todo `status` values are `pending` | `in_progress` | `completed`.
-
-Before you run the prompt, review:
-
-- [`PLAN.md` overview](./PLAN.md): Confirm the application boundaries and shared decisions.
-- [Choose Your Stack](./PLAN-phase1-api.md#choose-your-stack): Identify the framework and libraries for your language.
-- [Data Access Layer](./PLAN-phase1-api.md#data-access-layer): Check the repository contracts and factory boundary.
-- [Data Models](./PLAN-phase1-api.md#data-models): Check every field, default, and constraint.
-- [Seed Data](./PLAN-phase1-api.md#seed-data): Check the exact IDs and initial values used by later verification.
+### Step 2: Publish and protect the repository 🐙
 
 ```
-> Read PLAN.md and PLAN-phase1-api.md in this directory. Create an Azure Functions
-  Node.js TypeScript project (v4 programming model) in a src/api/ subdirectory
-  (or my chosen stack if I say otherwise). Initialize 
-  with host.json, local.settings.json, and language-appropriate config.
-  Then create:
-  1. Data models for Todo and ActionStep from the "Data Models" section
-     (status values: pending | in_progress | completed)
-  2. Repository interfaces (TodoRepository, ActionStepRepository) 
-  3. Azure SQL implementation using the appropriate SQL driver for my language
-  4. A factory that returns the Azure SQL DataStore
-  5. Seed data from the "Seed Data" section with exact IDs
-  Log issues to issues.md.
+> Generate .github/workflows/ci.yml as described in the "Continuous
+  Integration" section of PLAN.md and commit it. Then create a GitHub
+  repository named smart-todo from this workspace with the GitHub CLI and
+  push main. Make it public unless I say otherwise. Before pushing, confirm
+  that no secrets or generated files are tracked. Then apply the
+  "Repository Protection" section of PLAN.md and tell me whether the
+  ruleset is enforced.
 ```
 
-After generation, `local.settings.json` should look like this (fill in your values):
+**Gate:** `gh ruleset list` shows one active ruleset, and `gh run list --workflow ci.yml` shows a successful run on `main`.
 
-```json
-{
-  "IsEncrypted": false,
-  "Values": {
-    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "node",
-    "AZURE_SQL_SERVER": "localhost",
-    "AZURE_SQL_DATABASE": "SmartTodo",
-    "AZURE_SQL_USER": "sa",
-    "AZURE_SQL_PASSWORD": "YourStrong!Pass123",
-    "AZURE_AI_ENDPOINT": "",
-    "AZURE_AI_DEPLOYMENT": "gpt-5-mini",
-    "AZURE_AI_KEY": ""
-  }
-}
-```
+From now on, nothing reaches `main` without a pull request, green checks, and resolved review comments, including the agent's work. The CI jobs skip their work until the API, iOS app, and infrastructure exist, so they pass from the first commit.
 
-Leave the AI values empty for now. You'll fill them in during Step 4 when you add AI-powered step generation.
+### Step 3: Turn the architecture into issues 🐙
 
-**🔍 Inspect what was generated:**
-
-Open the repository interfaces file. Look for:
-- Does `TodoRepository` have `getAll(userId)`, `getById(id)`, `create()`, `update()`, `delete()`?
-- Does `ActionStepRepository` have `getByTodoId()`, `create()`, `update()`, `deleteByTodoId()`?
-
-Open the Azure SQL implementation. Look for:
-- Are parameterized queries used (not string concatenation)?
-- Does `delete` cascade to action steps?
-- Is the `order` column quoted with brackets (`[order]`)? It's a reserved word in SQL.
-- Does it use managed identity auth for Azure SQL?
-- In Azure, does it keep `AZURE_SQL_SERVER` as the full `<server>.database.windows.net` FQDN?
-
-If anything's off, tell GitHub Copilot:
+Attach the diagram and let the agent break the work down:
 
 ```
-> The Azure SQL implementation isn't quoting the "order" column name. 
-  It's a reserved word in SQL — wrap it in brackets: [order].
+> @images/architecture.png This is the SmartTodo architecture. Read PLAN.md,
+  then create the issues described in its "Issue Breakdown" section. Show me
+  each issue number and title.
 ```
 
-**💡 What you're learning:** The repository pattern separates "what data operations exist" from "how they talk to a database." Functions never import the database client directly. Instead, they get a `DataStore` from the factory. This keeps function handlers clean and testable.
+Open the issues on GitHub. Note the numbers for Phase 1, 2, and 3. The prompts below call them `<api-issue>`, `<ios-issue>`, and `<azure-issue>`.
 
-#### Step 3: Generate the API endpoints
-
-Now add the Azure Functions HTTP triggers that use the repository interfaces.
-
-Before you run the prompt, review:
-
-- [API Endpoints](./PLAN-phase1-api.md#api-endpoints): Check each route's input, response shape, status code, and business rules.
-- [Error Response Format](./PLAN-phase1-api.md#error-response-format): Check the common error envelope and status-code mapping.
-- [Auto-completion rule](./PLAN-phase1-api.md#patch-apitodosidstepsstepid): Confirm how step updates change the parent todo status.
-
-```
-> Read the "API Endpoints" section in PLAN-phase1-api.md. Create HTTP-triggered functions
-  in src/api/src/functions/ for each endpoint: getTodos, createTodo, 
-  updateTodo, deleteTodo, generateSteps, and updateStep. Each function 
-  should get a DataStore from the factory — never import the database 
-  directly. Follow the request/response formats in the "API Endpoints" and
-  "Error Response Format" sections. For now,
-  stub generateSteps to return a 501 — we'll add AI in the next step.
-```
-
-**🔍 Inspect what was generated:**
-
-Check the todo creation function. Look for:
-1. Does `POST /api/todos` validate that `title` is non-empty and under 500 characters?
-2. Does it require `userId`?
-3. Does it return 201 with the created todo (not 200)?
-4. Does the error response match the spec format `{ error: { code, message } }`?
-
-Check the step update function:
-1. Does `PATCH /api/todos/:id/steps/:stepId` auto-complete the todo when all steps are done?
-2. Does it set the todo back to `in_progress` when a completed step is unchecked?
-
-```
-> The updateStep function doesn't auto-complete the parent todo when all
-  steps are marked done. Read the "Auto-completion rule" in PLAN-phase1-api.md and
-  implement it.
-```
-
-**💡 What you're learning:** Auto-completion is a cross-entity business rule: changing a step can change the parent todo's status. Review generated code for relationships like this, where one update must trigger another.
-
-#### Step 4: Add AI-powered step generation
-
-Now wire up the real AI call to replace the stub.
-
-Before you run the prompt, review:
-
-- [AI Task Decomposition](./PLAN-phase1-api.md#ai-task-decomposition): Check the system prompt, model settings, parsing rules, environment variables, and regenerate behavior.
-- [`POST /api/todos/:id/generate-steps`](./PLAN-phase1-api.md#post-apitodosidgenerate-steps): Confirm the endpoint contract and 503 error path.
-
-```
-> Read the "AI Task Decomposition" section in PLAN-phase1-api.md.
-  Implement the generateSteps function to call gpt-5-mini via the openai SDK for
-  my language. Use the exact system prompt from the "AI Task Decomposition"
-  section. The client 
-  connects to Microsoft Foundry using the AZURE_AI_ENDPOINT (with 
-  /openai/v1/ path) and AZURE_AI_KEY env vars. Parse the AI response 
-  as a JSON array, validate each item has title and description, assign
-  sequential order values, and insert into the database. If steps 
-  already exist (stepsGenerated is true), delete them first and 
-  regenerate.
-```
-
-**🔍 Inspect what was generated:**
-
-1. Is the system prompt clear about returning ONLY a JSON array with no markdown wrapping?
-2. Does it strip markdown code fences (` ```json `) from the response before parsing?
-3. Does it retry once if the response isn't valid JSON?
-4. Does it handle AI service errors gracefully (timeout, rate limit → 503)?
-5. Does it set `stepsGenerated = true` on the todo after inserting steps?
-
-**💡 What you're learning:** Structured AI output needs an explicit contract. The system prompt must require the format ("ONLY a JSON array, no markdown"), and the code still needs defensive parsing when the response doesn't follow it.
-
-#### Step 5: Test the API yourself
-
-Don't ask GitHub Copilot to test. Run these yourself and understand what each one verifies.
-
-First, confirm the Functions port is available. This command works from PowerShell, Command Prompt, Mac, and Linux:
-
-```text
-node -e "const net=require('node:net');const s=net.createServer();s.once('error',()=>{console.error('Port 7071 is in use');process.exit(1)});s.once('listening',()=>s.close(()=>console.log('Port 7071 is available')));s.listen(7071,'127.0.0.1')"
-```
-
-If the port is already in use, select another port with `func start --port <port>` and use that port in the commands below.
-
-Change to `src/api`, start Azurite when using development storage, then run the selected stack's install, seed, build, and `func start` commands as separate processes. Don't chain required steps with shell-specific operators.
-
-> **⚠️ Node.js note:** If Functions fails to find any functions, check that `"main"` in `package.json` is `"dist/functions/*.js"` (not `"dist/src/functions/*.js"`). Since `tsconfig.json` sets `rootDir: "src"`, the `src/` prefix is stripped from the output path.
-> For `azd` remote builds, do not exclude `src/` or `tsconfig.json` in `.funcignore`; Azure needs them to compile TypeScript.
-
-In a second terminal, call the API directly to confirm it responds before running the full verifier.
-
-**Mac, Linux, or Git Bash:**
-
-```bash
-curl --fail "http://localhost:7071/api/todos?userId=user-1"
-```
-
-**PowerShell:**
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:7071/api/todos?userId=user-1"
-```
-
-The response must contain the seeded todos. If the request fails, paste the exact start command, terminal error, and HTTP response into GitHub Copilot:
-
-```
-> I started the SmartTodo API with this command:
-  [paste start command]
-  Calling http://localhost:7071/api/todos?userId=user-1 failed with:
-  [paste exact error or response]
-  Diagnose the cause, make the smallest fix, restart the API, and retry the request.
-```
-
-Next, have GitHub Copilot generate a local verifier. Run this prompt in the same Copilot session you've been using, which is rooted at `journeys/smart-todo` inside your `smart-todo-workspace` copy, so the file lands at `journeys/smart-todo/scripts/verify-api.mjs`:
-
-```
-> Create scripts/verify-api.mjs in this journey directory, pointed at the
-  local port the API is running on. It must verify seed reads, create,
-  status update, AI step generation when credentials are configured, step
-  completion, delete, cascade behavior, and final absence. Remove temporary
-  records in a finally block, and exit nonzero on any failed status or
-  assertion. Then run it with node scripts/verify-api.mjs.
-```
-
-This generated local verifier is separate from the checked-in deployment verifier (`.github/scripts/verify-smart-todo.mjs`) used in Phase 3. It exists only in your workspace copy and is not part of this repository.
-
-If any test fails, describe the failure to GitHub Copilot and let it fix it:
-
-```
-> The DELETE endpoint returns 200 instead of 204. Fix it to return 
-  204 with no response body.
-```
-
-**💡 What you're learning:** Running the verifier yourself shows you what the API returns, how cascade deletion behaves, and which failures matter when you later test the deployed app.
+**💡 What you're learning:** Issues are shared memory. Decisions, pull requests, review comments, and known limitations attach to them, so the next session, teammate, or cloud agent starts with the same context you have.
 
 ---
 
-### Phase 2: Build the iOS App (Mac only)
+## Phase 1: Build the API Test-First
+
+<p align="center">
+  <img src="./images/phase1-api.webp" alt="Phase 1: Building the API" width="800" />
+</p>
+
+You'll build the Azure Functions API with Node.js and TypeScript. Locally, it uses an in-memory store and a fake AI generator, so this phase needs no database, no AI key, and no Azure resources.
+
+### Step 1: Grill the plan
+
+Create the branch, then start the interview in an interactive `copilot` session:
+
+```text
+git switch -c phase-1-api
+```
+
+```
+> Use the grill-plan skill on issue #<api-issue>. Read PLAN.md and
+  PLAN-phase1-api.md first. When we finish, post the Decisions and the
+  Test list as a comment on the issue.
+```
+
+Answer each question. Saying "use the defaults" is fine on your first run.
+
+**💡 What you're learning:** Each question is a decision the agent would otherwise make silently, such as what happens when the model returns nine steps. The plan's [Decision Points](./PLAN-phase1-api.md#decision-points) section steers the interview so the questions that matter always come up. Writing a section like that is how you steer an agent's questions in your own projects.
+
+### Step 2: Red: write the failing tests
+
+```
+> Use the tdd-builder agent for the red phase of issue #<api-issue>.
+  Scaffold src/api as described in the "Project Structure", "Local
+  Providers", and "Quality Gate" sections of PLAN-phase1-api.md. Then write
+  the tests from its "Test Strategy" section and the Decisions comment on
+  the issue. Tag the red commit phase1-red.
+```
+
+Confirm the tests fail for the right reason:
+
+```text
+cd src/api
+npm test
+cd ../..
+```
+
+The failures must be assertions or `Not implemented` errors. Import or compile errors mean the red phase isn't done, so ask the agent to fix the setup.
+
+**🔍 Review the tests, not code.** Read the Requirement → Test table the agent printed. Every interview decision needs a test, boundaries need both sides (500 characters passes, 501 fails), and fixtures must make sense: a pending todo whose only step is checked becomes `completed`, not `in_progress`. If something is wrong, fix it now, while it's cheap:
+
+```
+> The Decision Point 3 test gives the todo only one step, so completing it
+  triggers auto-completion. Give the todo two steps and complete only the
+  first. Keep it red. Amend the red commit and move the phase1-red tag.
+```
+
+**💡 What you're learning:** You're reviewing around forty test names instead of a thousand lines of generated code. A misunderstanding caught in a test name costs one sentence to fix.
+
+### Step 3: Green: let the agent make them pass
+
+Autopilot keeps working until the objective is met. Add `--max-ai-credits <n>` to cap spending.
+
+```
+> /autopilot Use the tdd-builder agent for the green phase of issue
+  #<api-issue>. Implement src/api until "npm run check" passes. Do not
+  change anything under src/api/test. Commit the result as a green commit.
+```
+
+<details>
+<summary>Optional: split the work across parallel agents with <code>/plan</code> and <code>/fleet</code></summary>
+
+`/fleet` runs several subagents at once, each owning part of a plan. It shows how agents divide work, but costs about ten times more than autopilot here. Run `/plan Plan the green phase of issue #<api-issue> as independent tracks: data stores, AI, and HTTP handlers.`, review the plan, and **leave plan mode** (Shift+Tab) so the subagents can write files. Then run `/fleet Implement the plan with the tdd-builder agent's green-phase rules and commit the result as a green commit.`
+
+</details>
+
+**Gate:** Both commands must exit `0`:
+
+```text
+cd src/api
+npm run check
+cd ../..
+git diff --exit-code phase1-red -- src/api/test
+```
+
+**💡 What you're learning:** The second command is why you can trust the first. An agent that's trying to make tests pass can "fix" the tests. The diff proves it didn't.
+
+### Step 4: Prove it from the outside
+
+Unit tests prove the pieces. The checked-in verifier proves the running API from outside, and you didn't let the agent write it.
+
+1. In one terminal, from `src/api`, start the storage emulator with `npm run azurite`.
+2. In a second terminal, from `src/api`, run `npm run build`, then `func start`. If port 7071 is in use, use `func start --port <port>` and that port below.
+3. In a third terminal, from `journeys/smart-todo`, run:
+
+```text
+node ../../.github/scripts/verify-smart-todo.mjs --base-url http://localhost:7071
+```
+
+**Gate:** It prints `PASS: seed, validation errors, create, AI steps, auto-completion, reopen, delete, and final absence`.
+
+Leave the API running for Phase 2. Then get a review:
+
+```
+> /review Review the phase-1-api branch against PLAN-phase1-api.md and the
+  Decisions comment on issue #<api-issue>. Report only correctness,
+  security, and contract issues.
+```
+
+Decide what to do with each finding, then hand it back:
+
+```
+> Triage these /review findings with the "Review Triage" section of
+  PLAN.md: fix <numbers>, file <number> as a known-limitation issue.
+```
+
+The agent writes each fix as a new red commit (moving the `phase1-red` tag), then a green commit. For a second opinion, run `/rubber-duck` with a different model.
+
+### Step 5: Ship through the gate 🐙
+
+```
+> Push phase-1-api and open a pull request that closes #<api-issue>. Paste
+  the gate results into the description. Don't enable auto-merge yet.
+```
+
+Watch the checks with `gh pr checks --watch`. Copilot code review posts one review a few minutes after the pull request opens (check with `gh pr view --json reviews`). **Don't enable auto-merge before it arrives**: a review comment only blocks the merge once it exists.
+
+Start Phase 2 while CI and review run. When the review arrives, read it, then hand it to the agent:
+
+```
+> Handle the Copilot code review on this pull request with the triage
+  procedure in the "Review Triage" section of PLAN.md.
+```
+
+Copilot reviews each pull request once, so there's no second round to wait for. Enable auto-merge with `gh pr merge --auto --squash`; the ruleset merges when every check is green and every thread is resolved.
+
+**💡 What you're learning:** Each reviewer finds things the others miss. The tests catch contract bugs, `/review` catches gaps in the plan's rules, and Copilot code review catches things like a model parameter gpt-5-mini rejects in production. Layered review is worth it; unlimited rounds aren't, because each round finds something new in the last fix.
+
+---
+
+## Phase 2: Build the iOS App from Mockups
 
 <p align="center">
   <img src="./images/phase2-ios.webp" alt="Phase 2: SwiftUI App" width="800" />
 </p>
 
-> **New to Swift?** SwiftUI uses `Codable` for JSON serialization (similar to TypeScript interfaces), `async/await` for network calls (same concept as JavaScript/Python), and `#if DEBUG` for compile-time feature flags. The `.xcodeproj` file is Xcode's project format. GitHub Copilot generates both the Swift source files and the `.xcodeproj` that references them, but you'll open the project in Xcode to build and run it.
+This phase starts from [mockups](./images/mockups/smart-todo-mockups.png) instead of an architecture diagram, and from a starter Xcode project in [`starter/ios`](./starter/ios) so the agent doesn't have to hand-write Xcode's project file. The tests run against an in-app fake client, so they need no running API.
 
-Before you run the prompt, review:
+> **New to Swift?** `Codable` handles JSON like TypeScript interfaces, `async/await` works as in JavaScript, and `#if DEBUG` is a compile-time flag. XCTest runs unit tests, and XCUITest drives the app in a simulator the way a person would.
 
-- [`PLAN.md` overview](./PLAN.md): Confirm the application boundaries.
-- [Phase 1 API plan](./PLAN-phase1-api.md): Confirm the fixed Todo, ActionStep, error, and REST contracts.
-- [iOS Client](./PLAN-phase2-ios.md#ios-client): Check the platform, models, API client, and view requirements.
+### Step 1: Stack a worktree on Phase 1
 
-#### Step 1: Generate the SwiftUI project
-
-```
-> Read PLAN.md, PLAN-phase1-api.md, and the "iOS Client" section in
-  PLAN-phase2-ios.md. Create a SwiftUI iOS app in
-  src/ios/SmartTodo/. Include:
-  - An Xcode project at src/ios/SmartTodo/SmartTodo.xcodeproj that references
-    every generated Swift file, targets iOS 17 or later, and builds for the
-    iPhone simulator
-  - Models matching the API types (Todo, ActionStep) using Codable
-  - An APIClient using URLSession with async/await
-  - A Config.swift with #if DEBUG for localhost vs production URL
-  - Views: TodoListView (main list), AddTodoView (sheet), 
-    TodoDetailView (with Generate Steps button), ActionStepsView 
-    (ordered checkable list with progress bar)
-  Use the exact model fields from PLAN-phase1-api.md and view descriptions
-  from PLAN-phase2-ios.md.
-  Confirm the project opens and builds before you finish.
-```
-
-**🔍 Inspect what was generated:**
-
-Open `APIClient.swift`. Look for:
-- Does it use `async throws` functions with `URLSession.shared.data(for:)`?
-- Does it decode the API error format `{ error: { code, message } }` into descriptive errors?
-- Is the base URL pulled from `Config.swift` (not hardcoded)?
-- Does `deleteTodo` handle `204 No Content` without trying to decode JSON?
-
-Open `TodoDetailView.swift`. Look for:
-- Is there a "Generate Steps" button when `stepsGenerated == false`?
-- Is there a "Regenerate Steps" button when `stepsGenerated == true`?
-- Does it show a `ProgressView` during AI generation?
-
-Open `ActionStepsView.swift`. Look for:
-- Are steps numbered and ordered by the `order` field?
-- Do completed steps show strikethrough?
-- Is there a progress bar showing completion percentage?
-
-```
-> The TodoDetailView doesn't show a loading state during step generation. 
-  Add a ProgressView that shows while the generateSteps API call is in 
-  flight. Disable the Generate button during loading.
-```
-
-**💡 What you're learning:** The iOS app is a thin client. The API owns the business rules; the app displays data and sends user actions. You can update the AI prompt, change the database, or add features without touching the Swift code as long as the API contract stays the same.
-
-#### Step 2: Test on the Simulator
-
-Run the API locally, then build and run the iOS app in Xcode:
-
-1. Open `src/ios/SmartTodo/SmartTodo.xcodeproj` in Xcode
-2. Select an iPhone 16 simulator
-3. Build and Run (⌘R)
-4. Verify: seed todos load, you can add a todo, tapping a todo shows its detail view
-
-**🧪 Test it yourself:**
-
-1. Add a new todo: "Plan a weekend camping trip"
-2. Tap the todo → tap "Generate Steps"
-3. Watch the loading indicator → verify 3-7 actionable steps appear
-4. Check off two steps → verify the progress bar updates
-5. Check off ALL steps → verify the todo status changes to "completed"
-6. Go back to the list → verify the status badge shows "completed"
-
-If the app can't reach the API, check that:
-- The API is running on `localhost:7071`
-- `Config.swift` has `http://localhost:7071` for the `DEBUG` build
-- App Transport Security allows local HTTP (should be automatic in the Simulator)
-
-If the Simulator says `Application failed preflight checks` or `SBMainWorkspace Busy`, uninstall the app from that simulator, reboot the simulator, then clean build and run again.
-
-#### Step 3: Push to GitHub
-
-You'll need a GitHub repo if you choose the cloud agent deployment path in Phase 3, and it's a good checkpoint either way. Run:
-
-```
-> Prepare this Git repository for the cloud-agent workflow. Run Git operations
-  from the repository root so .github and journeys/smart-todo are included.
-  Before staging files, inspect .gitignore and the working tree. Ensure secrets,
-  .env files, local.settings.json, .azure, node_modules, build output, coverage,
-  and Xcode user data will not be committed; stop and tell me what needs to be
-  fixed if any sensitive or generated files are included. Stage the project,
-  commit it with the message "SmartTodo: API + SwiftUI client", create a
-  private GitHub repository named smart-todo with GitHub CLI, and push the
-  current branch. When finished, show me the repository URL and final git
-  status.
-```
-
-Continue working from `journeys/smart-todo` for the rest of the journey.
-
-#### Step 4: Review the completed application
-
-Before generating deployment infrastructure, review the complete SmartTodo implementation.
-
-Use these documents as the review contract:
-
-- [`PLAN.md` overview](./PLAN.md): Verify the end state and cross-phase contracts.
-- [Phase 1 API and AI plan](./PLAN-phase1-api.md): Find missing API, data, or AI behavior and contract drift.
-- [Phase 2 iOS plan](./PLAN-phase2-ios.md): Find missing SwiftUI behavior or API-client contract drift.
-- [Phase 3 Azure plan](./PLAN-phase3-azure.md): Confirm that the application exposes the configuration and build surfaces required for deployment.
+A worktree is a second checkout of the same repository, so Phase 2 can move forward while Phase 1 is in review. From `journeys/smart-todo`:
 
 ```text
-> /review Review the completed SmartTodo implementation against PLAN.md,
-  PLAN-phase1-api.md, PLAN-phase2-ios.md, and PLAN-phase3-azure.md.
-  Identify missing or incorrectly implemented requirements and correctness,
-  security, or reliability issues.
+git worktree add ../../../smart-todo-ios -b phase-2-ios phase-1-api
+cd ../../../smart-todo-ios/journeys/smart-todo
+copilot
 ```
 
-Address any high-confidence correctness, security, or reliability findings before continuing.
+If Phase 1 already merged, run `git fetch` first and use `origin/main` instead of `phase-1-api`. Inside Copilot CLI, `/worktree` creates a worktree without leaving the session.
 
-> **💡 Get multiple perspectives:** Run `/rubber-duck` with the same review request against multiple models. Compare their findings and act on issues that are specific, reproducible, and relevant to the [`PLAN.md` overview](./PLAN.md) and all three phase plans.
+### Step 2: Grill and red from the mockups
+
+```
+> @images/mockups/smart-todo-mockups.png These are the SmartTodo mockups.
+  Use the grill-plan skill on issue #<ios-issue> with PLAN-phase2-ios.md,
+  and post the decisions to the issue.
+```
+
+```
+> Use the tdd-builder agent for the red phase of issue #<ios-issue>. Copy
+  starter/ios to src/ios as the "Project Layout" section of
+  PLAN-phase2-ios.md describes, then write the tests from its "Test
+  Strategy" section and scripts/test-ios.mjs from its "Quality Gate"
+  section. Tag the red commit phase2-red.
+```
+
+On a Mac, run `node scripts/test-ios.mjs`. The build must succeed and the tests must fail. Read the UI test and compare its steps with the mockups, and check that test fixtures match the Phase 1 [Seed Data](./PLAN-phase1-api.md#seed-data) and status rules.
+
+### Step 3: Green
+
+```
+> /autopilot Use the tdd-builder agent for the green phase of issue
+  #<ios-issue>. Build the views from the mockups and PLAN-phase2-ios.md
+  until "node scripts/test-ios.mjs" passes. Do not change the test targets
+  or scripts/test-ios.mjs. Commit the result as a green commit.
+```
+
+**Gate (Mac):** Both commands must exit `0`:
+
+```text
+node scripts/test-ios.mjs
+git diff --exit-code phase2-red -- scripts/test-ios.mjs src/ios/SmartTodoTests src/ios/SmartTodoUITests
+```
+
+On Windows or Linux, skip to Step 5. The `ios` CI check runs the tests on a macOS runner.
+
+**If the diff gate fails**, the agent changed a red-phase test. Read the diff and decide. If the test was wrong, commit only the test change as a new red commit, move the tag with `git tag -f phase2-red`, then commit the implementation as green. If the test was right, restore it with `git checkout phase2-red -- <file>` and ask the agent to fix the code instead.
+
+### Step 4: Try it
+
+Open `src/ios/SmartTodo.xcodeproj` in Xcode, select an iPhone simulator, and run it (⌘R) against the local API from Phase 1. In Xcode 27 and later, the simulator window is in the **Device Hub** app. Add "Plan a weekend camping trip", generate steps, check them all off, and confirm the list shows `completed`.
+
+The UI test proves the flow someone scripted. Exploratory testing finds what nobody scripted. Change the simulator's appearance and text size from the command line, relaunch, and look:
+
+```text
+xcrun simctl ui booted appearance dark
+xcrun simctl ui booted content_size accessibility-extra-extra-large
+xcrun simctl io booted screenshot smart-todo-dark-xxl.png
+```
+
+Try a very long title and a todo with seven steps too. Restore the defaults with `appearance light` and `content_size large`. When you find a real bug, turn it into an XCUITest first, then fix it.
+
+<details>
+<summary>Optional: let Computer Use inspect the app</summary>
+
+Computer Use lets an agent read the running app's accessibility tree and screenshots. It needs an interactive session and Accessibility and Screen Recording permissions for the **Copilot Computer Use** helper app. Run `/computer`, then ask: `Inspect SmartTodo in Device Hub and report layout problems, truncated text, and differences from the mockups, with screenshots. Do not change code.` In Xcode 27 it can read the simulated app but not tap or type into it, so put the app in each state yourself. Its results vary, so it isn't a gate.
+
+</details>
+
+### Step 5: Ship a stacked pull request 🐙
+
+```
+> Push phase-2-ios and open a pull request that closes #<ios-issue>. Use
+  phase-1-api as the base if it hasn't merged yet, otherwise main. Don't
+  enable auto-merge.
+```
+
+Handle the Copilot code review with the Phase 1 triage prompt.
+
+A stacked pull request shows only the iOS changes. Don't enable auto-merge while its base is `phase-1-api`: that branch has no rules, so it would merge immediately into Phase 1.
+
+When Phase 1 merges, GitHub deletes `phase-1-api` and retargets this pull request to `main`. Because Phase 1 was squashed into one new commit, replay only the iOS commits onto `main`, move the red tag to the replayed red commit (`git tag -f phase2-red <commit>`), and enable auto-merge once the review threads are resolved:
+
+```text
+git fetch origin
+git rebase --onto origin/main phase-1-api
+git push --force-with-lease
+gh pr merge --auto --squash
+```
 
 ---
 
-### Phase 3: Deploy to Azure
+## Phase 3: Deploy to Azure with Gates
 
 <p align="center">
   <img src="./images/phase3-deploy.webp" alt="Phase 3: Deploy to Azure" width="800" />
 </p>
 
-#### Option A: Deploy interactively with GitHub Copilot
-
-##### Step 1: Generate infrastructure
-
-The prompt stays short on purpose. The complete deployment contract, including AVM module choices, Flex Consumption settings, SQL and firewall rules, app settings, outputs, and both post-provision hooks, lives in the [Azure Deployment](./PLAN-phase3-azure.md#azure-deployment) section of `PLAN-phase3-azure.md`.
-
-Before you run the prompt, review:
-
-- [`PLAN.md` overview](./PLAN.md): Confirm the end state and cross-phase contracts.
-- [Phase 1 API plan](./PLAN-phase1-api.md): Confirm the application and database contracts that deployment must preserve.
-- [Azure Deployment](./PLAN-phase3-azure.md#azure-deployment): Identify the required resources, Flex Consumption settings, hooks, outputs, and deployment acceptance criteria.
-- [Bicep Requirements](./PLAN-phase3-azure.md#bicep-requirements): Verify identity, role, SQL, AI, storage, and app-setting wiring.
-- [Post-Provision: Managed Identity SQL Access](./PLAN-phase3-azure.md#post-provision-managed-identity-sql-access): Confirm the portable hook contract.
-- [Deployment Acceptance Criteria](./PLAN-phase3-azure.md#deployment-acceptance-criteria): Confirm the live checks the deployment must pass.
-
-```
-> Read PLAN.md and the "Azure Deployment" section in PLAN-phase3-azure.md.
-  Create everything it
-  specifies: the Bicep in infra/ from its "Azure Resources," "Flex Consumption
-  Configuration," and "Bicep Requirements" subsections, azure.yaml exactly as
-  its "azure.yaml" subsection shows with language ts (or my chosen stack), and
-  infra/hooks/postprovision.js plus infra/hooks/postprovision-schema.sql
-  exactly as its "Post-Provision: Managed Identity SQL Access" and "Database
-  Schema Initialization" subsections specify. Honor every item in "Known
-  Deployment Gotchas." Log issues to issues.md.
-```
-
-**🔍 Before deploying, run a read-only review:**
-
-If you're asked any questions after submitting the prompt, accept the recommended answers.
-
-After generation completes, run this pre-deployment review prompt:
-
-```
-> Perform a read-only pre-deployment review of the generated SmartTodo
-  infrastructure and azd configuration. Do not modify files or deploy.
-  Check every requirement in the "Azure Deployment" section of
-  PLAN-phase3-azure.md,
-  including its "Azure Resources," "azure.yaml," "Flex Consumption
-  Configuration," "Bicep Requirements," "Post-Provision: Managed Identity SQL
-  Access," "Database Schema Initialization," and "Known Deployment Gotchas"
-  subsections. Run any existing read-only Bicep or azd validation commands
-  that do not create resources. Return:
-  1. PRE-DEPLOYMENT STATUS: READY or NOT READY
-  2. A table with each requirement, PASS or FAIL, and file/line evidence
-  3. Every blocking issue and the smallest exact fix
-  Do not report READY while any required check is unresolved.
-```
-
-Step 2 sets `AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, and `AZURE_PRINCIPAL_TYPE` for you. Confirm all three are populated before you run `azd up`.
-
-**💡 What you're learning:** Managed identity lets the Function App authenticate to Azure SQL without passwords. The AI call uses the plain `openai` SDK with an OpenAI-compatible `/openai/v1/` base URL and an app setting for `AZURE_AI_KEY`. Notice also that neither prompt enumerated the infrastructure requirements. The "Azure Deployment" section in `PLAN-phase3-azure.md` is the contract, and both the generation and the review bind to it. When a deployment teaches you a new gotcha, record it in the phase plan, not in an ever-longer prompt.
-
-##### Step 2: Deploy
-
-Before provisioning, Azure needs each resource provider registered in your subscription, and `azd` needs your subscription ID plus the full Entra administrator contract (`AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, `AZURE_PRINCIPAL_TYPE`) that the SQL admin assignment depends on. Rather than reading three values out of the CLI and pasting them back in, let GitHub Copilot resolve and set them:
-
-```
-> Prepare this azd environment for deployment. Do not run azd up and do not
-  create any Azure resources.
-  1. Register the Microsoft.Web, Microsoft.Sql, Microsoft.CognitiveServices,
-     and Microsoft.OperationalInsights providers in the current subscription.
-     Registration is idempotent, so skip any that already report Registered.
-  2. Resolve the current subscription ID, and the signed-in principal's login
-     and object ID. Use az account show and az ad signed-in-user show for an
-     interactive user. If the session is a service principal, resolve the
-     service-principal login and object ID instead and use principal type
-     ServicePrincipal rather than User.
-  3. Set AZURE_SUBSCRIPTION_ID, AZURE_PRINCIPAL_LOGIN, AZURE_PRINCIPAL_ID, and
-     AZURE_PRINCIPAL_TYPE in the selected azd environment with azd env set.
-  Read each value and pass it as a literal argument. Do not use shell command
-  substitution, so this works in PowerShell, Command Prompt, bash, and zsh.
-  Stop and tell me which values are unavailable rather than guessing or
-  setting a placeholder. When finished, show every key you set with the
-  values unredacted except for anything secret, and confirm all four are
-  present.
-```
-
-Do not continue until all four values are confirmed present. If the agent reports a missing value, fix that Azure permission or sign-in problem before provisioning.
-
-<details>
-<summary>Manual fallback: set the environment values yourself</summary>
-
-Register the providers once per subscription:
+Start after Phase 1 merges. Stop the local API first (Ctrl+C): switching branches while `func start` runs from the same directory crashes the Functions host. If Phase 2 still needs a local API, start it from the `smart-todo-ios` worktree instead. Then, in your original workspace (`smart-todo-workspace/journeys/smart-todo`):
 
 ```text
-az provider register --namespace Microsoft.Web
-az provider register --namespace Microsoft.Sql
-az provider register --namespace Microsoft.CognitiveServices
-az provider register --namespace Microsoft.OperationalInsights
+git switch main
+git pull
+git switch -c phase-3-azure
+azd config set auth.useAzCliAuth true
 ```
 
-Read the subscription ID, account login, and object ID for an interactive user:
+### Step 1: Ask what it costs and how to make it better
+
+```
+> Do the "Cost and Architecture Review" in PLAN-phase3-azure.md for issue
+  #<azure-issue>. This is read-only. Do not change files.
+```
+
+Pick zero or one improvement for this run. The defaults work. If you adopt one, have the agent add it to `PLAN-phase3-azure.md` first, because the plan is what the generator, the gate, and the review all bind to. Then post your decisions:
+
+```
+> Post the cost estimate and my decisions as a comment on issue #<azure-issue>.
+```
+
+**💡 What you're learning:** Agents are very good at cloud trade-offs. You still own the decision, and the plan records it.
+
+### Step 2: Red: write the infrastructure gate first
+
+```
+> Create scripts/check-infra.mjs exactly as the "Infrastructure Gate"
+  section of PLAN-phase3-azure.md specifies. Run it with --offline and show
+  me that it fails because the infrastructure doesn't exist yet. Commit it
+  and tag the commit phase3-red.
+```
+
+**💡 What you're learning:** You just turned the plan's list of deployment gotchas into a program. Every rule an earlier deployment learned the hard way is now checked in seconds, for free, before anything reaches Azure.
+
+### Step 3: Green: generate infrastructure until the gate passes
+
+```
+> /autopilot Generate the infrastructure in the "Azure Deployment" section
+  of PLAN-phase3-azure.md until "node scripts/check-infra.mjs --offline"
+  passes. Do not change scripts/check-infra.mjs.
+```
+
+**Gate:** Both commands must exit `0`:
 
 ```text
-az account show --query id --output tsv
-az account show --query user.name --output tsv
-az ad signed-in-user show --query id --output tsv
+node scripts/check-infra.mjs --offline
+git diff --exit-code phase3-red -- scripts/check-infra.mjs
 ```
 
-Set each returned value in the selected `azd` environment:
+Read the infrastructure diff too. A gate only works if it checks what actually deploys, so watch for changes that satisfy a rule without changing the resource it describes.
+
+### Step 4: Preview, deploy, and verify
+
+Prepare the `azd` environment: provider registration, your subscription and principal, and the region.
+
+```
+> Prepare this azd environment as the "Environment Preparation" section of
+  PLAN-phase3-azure.md describes. Don't run azd up.
+```
+
+If you'd rather set the values yourself, the commands are in the Environment Preparation section of [`PLAN-phase3-azure.md`](./PLAN-phase3-azure.md#environment-preparation).
+
+Run the full gate, which adds an Azure what-if preview without creating resources:
 
 ```text
-azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
-azd env set AZURE_PRINCIPAL_LOGIN <account-login>
-azd env set AZURE_PRINCIPAL_ID <principal-object-id>
-azd env set AZURE_PRINCIPAL_TYPE User
+node scripts/check-infra.mjs
 ```
 
-For automation, use the service-principal login and object ID, and set `AZURE_PRINCIPAL_TYPE` to `ServicePrincipal`. Stop before provisioning if any required value is unavailable.
-
-</details>
-
-Now start the deployment yourself from the `journeys/smart-todo` directory. Run this one rather than delegating it, because `azd up` prompts for the environment name and location and streams the provisioning output you'll want to watch:
+When it passes, deploy. Run this yourself, because it prompts for an environment name and location and streams output worth watching:
 
 ```text
 azd up
 ```
 
-You may be asked if you'd like to check your Azure development tools. If you're asked and choose `Yes`, the command will list all recommended tools and their versions. If you know all of the required tools are installed, you can choose `No` to skip the check.
+The first `azd up` must end with `Post-provision SQL setup complete.` from the hook, which creates the Function App's database user. The API creates its own tables and seed data on its first request. If the hook fails, use the "When something fails" prompt, then run `node infra/hooks/postprovision.js` directly until it prints that line. It's safe to run more than once. Afterward, only `AllowAzureServices` may remain: run `az sql server firewall-rule list --resource-group <resource-group> --server <sql-server> --query "[].name" --output tsv` with the values from `azd env get-value RESOURCE_GROUP_NAME` and `azd env get-value SQL_SERVER_NAME` (the part before the first dot).
 
-Do not continue until `azd up` and the post-provision hook exit successfully.
-
-
-> ⏳ **While you wait:** Azure is provisioning your Function App, SQL Database, and Microsoft Foundry. Here's how to use the time:
->
-> 1. Watch your resources appear in real-time. Open the [Azure Portal](https://portal.azure.com) → search for your resource group, or run `az resource list --resource-group rg-<env-name> --output table` in a separate terminal.
-> 2. Re-read your `infra/main.bicep`. Can you trace how SQL access, AI settings, and deployment outputs flow into the Function App?
-> 3. Preview what's next: open `PLAN-phase3-azure.md` and re-read the "Known Deployment Gotchas" section. Which ones did your generated infrastructure already avoid?
-> 4. Ask the agent: *"/btw Explain which parts of this deployment use managed identity and which parts use app settings."*
-
-Deployment may take several minutes. If it fails, ask GitHub Copilot to help diagnose:
-
-```
-> azd up failed with this error: [paste the error]. What's wrong and what can be done to fix it?
-```
-
-##### Step 3: Confirm the post-provision SQL setup
-
-Bicep creates the Function App identity, but Azure SQL needs a separate database user and schema step. The generated `infra/hooks/postprovision.js` runs automatically after provisioning and works on Windows, Mac, and Linux. It runs `sqlcmd` through Node.js, opens the firewall to your IP address only for as long as it needs, creates the tables and seed data, then closes the firewall and restores the original settings, even if something fails partway through.
-
-Check `azd up` for `Post-provision SQL setup complete.` If the hook reports a missing prerequisite, use the [cross-platform installation guide](../../docs/tool-installation.md), verify `node --version` and `sqlcmd --version`, then rerun:
-
-```text
-node infra/hooks/postprovision.js
-```
-
-Run the hook rather than typing the equivalent SQL and Azure CLI commands by hand. It handles the quoting, firewall cleanup, and settings restore that are easy to get wrong. If it fails, fix the prerequisite or Azure permission it reports and run it again. Running it more than once is safe.
-
-##### Step 4: Verify the live deployment
-
-Run the checked-in verifier from the `journeys/smart-todo` directory on the host machine:
+**Gate:** The same verifier from Phase 1, now pointed at Azure:
 
 ```text
 node ../../.github/scripts/verify-smart-todo.mjs
 ```
 
-The verifier must print `PASS: seed, create, AI steps, step completion, fetch, delete, and final absence`. It reads `API_URL` through `azd`, exercises the deployed backend, removes its temporary todo in `finally`, and exits nonzero on a failed assertion or cleanup error.
+It reads `API_URL` through `azd` and must print the same `PASS` line as before. This time the steps come from gpt-5-mini.
 
-##### Step 5: Point the iOS app at Azure
+### Step 5: Point the iOS app at Azure (Mac)
 
-The simplest way: replace `Config.swift` with the deployed URL directly (removing the `#if DEBUG` conditional):
+Get the URL with `azd env get-value API_URL`, set `Config.apiBaseURL` to it, and run the app in the simulator. Generate steps for a real goal and compare them with the fake ones.
 
-```swift
-enum Config {
-    static let apiBaseURL = "https://<your-function-app>.azurewebsites.net"
-    static let defaultUserId = "user-1"
-}
-```
-
-Get the actual URL:
-
-```text
-azd env get-value API_URL
-```
-
-Build and Run in Xcode (⌘R) on the Simulator. Verify the full flow: add a todo → generate steps → check them off. You can restore the `#if DEBUG` conditional later if you want to switch between local and production.
-
-#### Option B: Deploy with GitHub Copilot cloud agent
-
-Create a GitHub issue and assign it to GitHub Copilot:
+### Step 6: Make it repeatable
 
 ```
-> Create a GitHub issue titled "Deploy SmartTodo backend to Azure" with these 
-  requirements:
-  - Create Bicep infrastructure using AVM modules for Azure Flex Functions, 
-    Azure SQL, Microsoft Foundry (gpt-5-mini), and monitoring
-  - Create azure.yaml with a single 'api' service (host: function)
-  - Use managed identity for SQL and the plain openai SDK with AZURE_AI_KEY for AI
-  - Follow the "Azure Deployment" section in PLAN-phase3-azure.md, including the
-    postprovision hook it specifies
-  Assign the issue to Copilot.
+> Create the skill in the "Reusable Infrastructure Skill" section and the
+  script in the "Deterministic Scaffold" section of PLAN-phase3-azure.md.
+  Then run the scaffold proof from that section.
 ```
 
-Review the PR, test the deployment, then merge.
+**Gate:** The scaffold proof passes: a fresh copy passes `check-infra.mjs --offline` with no AI involved.
+
+**💡 What you're learning:** Knowledge moves up a ladder as it proves itself:
+
+| Form | Cost per use | Same result every time? |
+| --- | --- | --- |
+| A prompt | AI credits and your attention | No |
+| A skill (`SKILL.md`) | AI credits | More often, because the agent starts with the lessons |
+| A script (`scaffold-infra.mjs` + `check-infra.mjs`) | Free, in seconds | Yes |
+
+Use a prompt to discover how to do something, a skill to repeat it well, and a script once the result stops changing.
+
+### Step 7: Ship 🐙
+
+```
+> Commit the infrastructure, skill, and scripts. Push phase-3-azure and
+  open a pull request that closes #<azure-issue>, with the verifier's PASS
+  line in the description. Don't enable auto-merge.
+```
+
+The `infra` check runs `check-infra.mjs --offline`. Handle the Copilot code review with the same prompt as Phase 1; because this pull request changes `infra/`, the triage procedure also redeploys and reruns the verifier before it replies.
+
+Then enable auto-merge with `gh pr merge --auto --squash`. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
 
 ---
 
-#### 🧪 Try it yourself: Improve the AI
+## Phase 4: Build the Factory
 
-With the build, deployment, and verification loop working, try improving the AI output:
+You ran the same loop three times by hand: issue, interview, red, green, gates, review, merge. Now you'll write that loop down so the next feature runs through it without you driving every step.
+
+### Step 1: Write down the definition of done
 
 ```
-> The AI-generated steps are too generic. Update the system prompt to 
-  ask for time estimates on each step and to make descriptions more 
-  specific. For example, instead of "Research the topic" say 
-  "Spend 2 hours reading the top 5 blog posts about [topic]."
+> Create .github/copilot-instructions.md and
+  .github/workflows/copilot-setup-steps.yml as described in the "Definition
+  of Done" and "Cloud Agent Environment" sections of PLAN-phase4-factory.md.
+  Open a pull request. Don't enable auto-merge.
 ```
 
-Test it, deploy with `azd up`, and compare the new steps with the old ones.
+Triage the Copilot code review as before, then enable auto-merge. After it merges:
+
+1. Run `gh workflow run copilot-setup-steps.yml` and confirm it succeeds with `gh run list --workflow copilot-setup-steps.yml`.
+2. In the repository's **Settings**, open **Copilot** → **Cloud agent** and turn off **Require approval for workflow runs**, so CI runs on the agent's pushes without you approving each one. It's safe here because `ci.yml` uses no secrets.
+
+### Step 2: Hand an issue to the cloud agent 🐙
+
+```
+> Create the issue in the "Feature Issue: Due Dates" section of
+  PLAN-phase4-factory.md and show me its URL.
+```
+
+**Gate:** Phases 1, 2, and 3 are merged (`git log --oneline origin/main` shows all three). The cloud agent branches from `main` when you assign it, so assigning earlier makes it rebuild whatever hasn't merged yet.
+
+On GitHub, open the issue, select **Assignees**, choose **Copilot**, select the **tdd-builder** agent, and assign it. The agent works in its own sandboxed GitHub Actions environment, built by your setup steps. It opens a **draft** pull request right away and runs the full cycle there: plan update, red commit, then green commits. It usually finishes in 15–25 minutes, when the pull request timeline shows that Copilot finished working.
+
+To assign from the command line instead, see [Assign the Cloud Agent](./PLAN-phase4-factory.md#assign-the-cloud-agent).
+
+**Without the cloud agent:** create a worktree for the issue and run the tdd-builder agent's full cycle locally: `Use the tdd-builder agent for the full cycle of issue #<number>.` Then ship it through the same pull request steps.
+
+### Step 3: Be the reviewer
+
+1. Read the red commit's test names, which the agent lists in the description. Did it understand the issue?
+2. When a check fails, paste the error line from the check log into a `@copilot` comment. The agent can't build Swift in its Linux environment, so the `ios` check is how it learns the app doesn't compile.
+3. Select **Ready for review** (`gh pr ready <number>`); a draft can't merge, and Copilot code review starts only after the pull request leaves draft. Remove the `[WIP]` prefix from the title, because the squash commit on `main` uses it.
+4. Triage the Copilot code review. Put every fix in one `@copilot` comment so the agent pushes once.
+5. Run [Verify Before Merge](./PLAN.md#verify-before-merge): `gh pr checkout <number>`, `azd deploy api`, and the deployed verifier. On a Mac, also run the app from the branch.
+6. When every thread is resolved, approve the pull request and enable auto-merge.
+
+### Step 4 (optional): Ship on merge
+
+```
+> Set up the "Release Pipeline (Optional)" in PLAN-phase4-factory.md. Stop
+  and ask me before creating any Azure identity or granting any role.
+```
+
+Merge any small change and watch the release run end with the verifier's `PASS` line. Schema changes such as due dates ship with the code, because the API applies its migrations at startup.
+
+### What you built
+
+| What you did by hand | What does it now |
+| --- | --- |
+| Broke the architecture into work | Issues and sub-issues |
+| Decided the ambiguous parts | The `grill-plan` skill and each plan's Decision Points |
+| Wrote tests first and kept them fixed | The `tdd-builder` custom agent |
+| Checked that it works | `ci.yml` gates and the checked-in verifier |
+| Checked that it's safe to merge | The ruleset, Copilot code review, and auto-merge |
+| Set up the agent's machine | `copilot-setup-steps.yml` |
+| Remembered how to deploy | The infrastructure skill, `scaffold-infra.mjs`, and `check-infra.mjs` |
+| Deployed | `release.yml` (optional) |
+
+The next step is running the factory on a schedule without anyone starting it. This repository does that for its own journeys: [`.github/workflows/journey-e2e-test.md`](../../.github/workflows/journey-e2e-test.md) is an agentic workflow that runs a journey end to end and files a report as an issue.
 
 ---
 
@@ -840,26 +620,49 @@ Test it, deploy with `azd up`, and compare the new steps with the old ones.
 
 ## How Agentic AI is Used
 
-<p align="center">
-  <img src="./images/generate-inspect-test-refine.webp" alt="Agentic AI Development Workflow" width="800" />
-</p>
+| Layer | What it demonstrates |
+|-------|----------------------|
+| **Planning and interviews** | Copilot turns a diagram into issues, and `grill-plan` makes you decide the ambiguous parts first |
+| **Test-driven generation** | `tdd-builder` writes failing tests, then code, and a diff proves the tests held |
+| **Review** | `/review` and Copilot code review catch what tests and plans missed |
+| **Cloud and infrastructure** | Copilot estimates cost and generates Bicep until a deterministic gate passes |
+| **Delegation** | The Copilot cloud agent delivers a feature through the same gates |
+| **Inside the app** | gpt-5-mini breaks goals into steps, with an explicit output format and defensive parsing |
 
-This journey uses agentic AI in several distinct roles:
+</details>
 
-| Layer | Use Case | What It Demonstrates |
-|-------|----------|---------------------|
-| **Code generation** | GitHub Copilot scaffolds Functions, data layer, and SwiftUI app from a spec | Break work into pieces, inspect each one, iterate on gaps |
-| **Code review** | You review generated code for business logic correctness | AI gets CRUD right but misses cross-entity rules like auto-completion |
-| **Task decomposition** | gpt-5-mini breaks vague goals into actionable steps | LLMs excel at structured output when prompts are explicit about format |
-| **Infrastructure** | GitHub Copilot generates Bicep with AVM modules and managed identity | Review deployment config carefully. Missing role assignments break silently |
-| **Debugging** | Ask GitHub Copilot to diagnose deployment or runtime errors | Describe errors, let AI suggest fixes, verify yourself |
-| **Delegation** | GitHub Copilot cloud agent creates the deployment PR from an issue | Write well-scoped issues with acceptance criteria, review the PR |
+<details>
+<summary>Lessons from validation runs</summary>
+
+## Lessons from Validation Runs
+
+This journey was run end to end three times before publishing. Each rule below exists because a run broke without it.
+
+- **Auto-merge before review merged unreviewed code.** A pull request merged four minutes before Copilot's review posted four real findings. Hence: wait for the review, and require conversation resolution.
+- **Review rounds multiplied.** Every push started a new review, and each round found something in the last fix. Three rounds on one pull request cost more than the implementation. Hence: one round, one push.
+- **Agents edit tests when stuck.** Autopilot started a second pass that changed two tests after the first pass refused to. Both edits happened to be right, but only the diff gate showed they happened.
+- **Agents game gates.** One couldn't satisfy an infrastructure rule, so it added a metadata field containing the expected text. The gate now checks only deployable resources.
+- **Local fakes hide production bugs.** gpt-5-mini rejected `max_tokens`, a SQL date was bound as a string, and a schema change shipped before its column existed. None of them showed up with the fake AI and the in-memory store. Hence: boundary tests and Verify Before Merge.
+- **Cleanup must survive failure.** The deployment hook left a temporary SQL firewall rule open twice, once from an unsupported flag and once from a crash right after creating it.
+- **Timing matters for the cloud agent.** An issue assigned before Phase 2 merged made the agent rebuild the iOS app, and every Swift file conflicted.
+- **Plan mode blocks writes.** `/fleet` launched while the session was still in plan mode; three subagents designed everything and wrote nothing.
 
 </details>
 
 ---
 
+## Assignment
+
+1. **Improve the AI through the factory.** Write an issue asking for time estimates in each generated step, and assign it to the cloud agent. How did the agent test a prompt change without calling the real model?
+2. **Try a different model.** Switch the Foundry deployment to gpt-4.1, generate steps for the same todo with each model, and compare quality and latency.
+3. **Observe the app.** Ask Copilot to query Application Insights for request counts, failures, and the slowest endpoint over the last hour, and to show the KQL it used.
+4. **Harden security.** Pick one: move `AZURE_AI_KEY` to Key Vault, switch AI to managed identity, add rate limiting to `generate-steps`, or require a function key. Each change starts with a plan update and a failing test. See [Production Hardening](./PLAN.md#production-hardening-out-of-scope).
+
+---
+
 ## Cost Breakdown
+
+**Azure (while the resources exist):**
 
 | Resource | SKU | Monthly Cost |
 |----------|-----|--------------|
@@ -871,7 +674,9 @@ This journey uses agentic AI in several distinct roles:
 | Storage Account | Standard LRS | ~$1 |
 | **Total** | | **~$10-30/month** |
 
-Functions and Microsoft Foundry scale to zero when idle, so you pay almost nothing during development. Azure SQL Basic is the floor at ~$5/month. Clean up with `azd down` when done.
+**Copilot (the whole journey, with a frontier model):** about 3,000–4,500 AI credits in local sessions, measured in validation runs: roughly 130 for Phase 0, 900 each for Phases 1 (2,100 with the optional `/fleet`), 2, and 3, and 300 for Phase 4 plus its cloud agent sessions. Review triage is the largest cost in each phase. Add `--max-ai-credits <n>` to `/autopilot` to cap a single run.
+
+**GitHub Actions:** free for public repositories on standard runners. For private repositories, macOS minutes (the `ios` check) count at a higher rate than Linux and Windows minutes. The Copilot cloud agent uses Actions minutes too.
 
 ---
 
@@ -880,159 +685,59 @@ Functions and Microsoft Foundry scale to zero when idle, so you pay almost nothi
 
 ## Troubleshooting
 
-### Function App returns 500 on database calls
-
-**Cause:** Managed identity not granted access to Azure SQL. The identity needs to be added as a database user with the right roles.
-
-**Fix:** Run `node infra/hooks/postprovision.js` while signed in as the Microsoft Entra administrator you configured. The hook creates the database user, grants its roles, and cleans up after itself. It's safe to run again.
-
-If logs show `getaddrinfo ENOTFOUND <sql-name>`, set `AZURE_SQL_SERVER` to the full FQDN: `<sql-name>.database.windows.net`.
-
-### AI step generation returns empty or malformed results
-
-**Cause:** The AI response includes markdown code fences (` ```json `) that break JSON parsing, or the endpoint/deployment name is wrong.
-
-**Fix:** Check that `generateSteps` strips markdown wrapping before parsing. Verify the AI config:
-
-Ask GitHub Copilot to generate a diagnostic script in your workspace copy at `journeys/smart-todo/scripts/diagnose-smart-todo.mjs`:
-
-```
-> Create scripts/diagnose-smart-todo.mjs in this journey directory. It must
-  read the Function App name and resource group through azd, inspect only
-  the names and presence of the required app settings through Azure CLI
-  argument arrays, and redact all setting values. Then run it with
-  node scripts/diagnose-smart-todo.mjs.
-```
-
-When using the plain `openai` SDK, normalize the endpoint to include `/openai/v1/` before creating the client.
-
-### Soft-deleted Cognitive Services blocks redeployment
-
-**Cause:** A previous `azd down` soft-deleted the Microsoft Foundry resource. It blocks re-creation for 48 hours.
-
-**Fix:**
-
-```text
-az cognitiveservices account list-deleted
-az cognitiveservices account purge --name <name> --resource-group <rg> --location <location>
-```
-
-### Deployment fails with provider registration errors
-
-**Fix:** Register Azure providers before deploying:
-
-```text
-az provider register --namespace Microsoft.Web
-az provider register --namespace Microsoft.Sql
-az provider register --namespace Microsoft.CognitiveServices
-az provider register --namespace Microsoft.OperationalInsights
-```
-
-### `azd deploy` fails during Oryx TypeScript build
-
-**Cause:** `.funcignore` excluded files Azure needs for remote build.
-
-**Fix:** Do not exclude `src/` or `tsconfig.json`. Exclude `node_modules/`, `dist/**/*.map`, and `local.settings.json`.
-
-> **Post-Deployment Issues:** The following issues relate to *using* the app after deployment, not the deployment itself.
-
-### iOS app can't reach the API
-
-**Cause:** The API URL in `Config.swift` doesn't match the deployed Function App URL, or it's using `http://` instead of `https://`.
-
-**Fix:** Get the correct URL and update `Config.swift`:
-
-```text
-azd env get-value API_URL
-```
-
-Make sure the URL uses `https://` and includes no trailing slash.
-
-### iOS Simulator says application failed preflight checks
-
-**Cause:** Simulator or installed app state is stuck.
-
-**Fix:** Uninstall SmartTodo from the simulator, reboot the simulator, then run **Product > Clean Build Folder** and launch again.
-
-### First API request after idle is slow (5-10 seconds)
-
-**Cause:** Azure Functions consumption plan cold start. The Function App scales to zero when idle and takes a few seconds to start up.
-
-**Fix:** This is expected behavior. Show a loading indicator in the iOS app. For production, consider the Functions Premium plan or Azure Container Apps for always-on hosting.
+| Symptom | Cause and fix |
+| --- | --- |
+| A required check says "Expected — Waiting for status to be reported" | A job named `api`, `ios`, or `infra` never ran, usually because of a `paths` filter or a renamed job. Every job must always run and succeed when its area doesn't exist yet ([Continuous Integration](./PLAN.md#continuous-integration)). |
+| The pull request merged before Copilot code review posted | Auto-merge was on when the pull request opened. Handle the late comments in a follow-up pull request, and enable auto-merge only after the review from now on. |
+| A pull request shows "no checks reported" | It conflicts with `main`, and GitHub doesn't run workflows on a conflicting pull request. Merge `origin/main`, resolve, and push (or ask `@copilot` to). |
+| Checks never start on the cloud agent's pull request | Turn off **Require approval for workflow runs** (Settings → Copilot → Cloud agent), or run `gh run rerun <run-id>` for the run whose conclusion is `action_required`. |
+| The ruleset exists but doesn't block merging | Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public, or continue knowing the gates don't block. |
+| The red phase fails with import or compile errors | Ask the agent for stubs that throw `Not implemented`, so tests compile and fail on assertions. |
+| `git diff --exit-code phase1-red` fails after a review fix | Commit review-driven tests as their own red commit and move the tag with `git tag -f phase1-red` before the fix. |
+| `xcodebuild` can't find tests, or a new Swift file isn't compiled | Start from `starter/ios`, whose synchronized folders include every file in each target folder and whose shared scheme includes both test targets. |
+| Functions finds no functions locally | `"main"` in `package.json` must be `"dist/functions/*.js"`, and run `npm run build` before `func start`. |
+| The Function App returns 500 on database calls | The managed identity lacks database access, or `AZURE_SQL_SERVER` isn't the full `<sql-name>.database.windows.net` name. Rerun `node infra/hooks/postprovision.js` as the Microsoft Entra administrator. |
+| AI step generation returns 503 in Azure | Check that `AI_PROVIDER=foundry` and the `AZURE_AI_*` settings exist (without printing values), and that the request uses `max_completion_tokens`, not `max_tokens`. |
+| A soft-deleted Cognitive Services account blocks redeployment | `az cognitiveservices account list-deleted`, then `az cognitiveservices account purge --name <name> --resource-group <rg> --location <location>`. |
+| `azd deploy` fails during the Oryx TypeScript build | Don't exclude `src/` or `tsconfig.json` in `.funcignore`. |
+| The iOS app can't reach the API | Locally, the API must run on `localhost:7071`. For Azure, `Config.apiBaseURL` must match `azd env get-value API_URL`, use `https://`, and have no trailing slash. |
+| The simulator says the application failed preflight checks | Uninstall SmartTodo from the simulator, restart it, run **Product > Clean Build Folder**, and launch again. |
+| The first request after idle takes 5–10 seconds | Expected: Flex Consumption scales to zero, and the first request after a deployment also applies database migrations. |
 
 </details>
 
 ---
-
-<details>
-<summary>Verification Checklist</summary>
 
 ## Verification Checklist
 
-Run the checked-in verifier from the `journeys/smart-todo` directory:
-
-```text
-node ../../.github/scripts/verify-smart-todo.mjs
-```
-
-It must prove seed reads, create, AI step generation, step completion, deletion, and final absence. A passing process exits `0`; any failed HTTP status, malformed payload, or cleanup failure exits nonzero.
-
-</details>
-
----
-
-## Assignment
-
-1. **Add due dates**: Ask GitHub Copilot to *"Add a dueDate field to todos and have the AI suggest deadlines for each action step based on the todo's due date."* Create a todo with a due date, generate steps, and observe whether the AI respects the timeline. Ask GitHub Copilot why some steps have unrealistic deadlines and how to fix the prompt.
-
-2. **Add a "Regenerate" button**: The UI already shows "Regenerate Steps" when steps exist. Test it: generate steps, then regenerate. Are the new steps different? Ask GitHub Copilot to explain why the results vary and how to make them more repeatable (hint: LLM sampling is random by default; gpt-5-mini fixes temperature at its default, while the gpt-4.1 fallback lets you lower it).
-
-3. **Try a different model**: Ask GitHub Copilot to *"Switch from gpt-5-mini to gpt-4.1 in the Foundry deployment."* Generate steps for the same todo with each model. Compare quality, specificity, and latency. Which is better for this use case?
-
-4. **Harden security**: The deployed app has no authentication, no rate limiting, and the AI key is in plaintext app settings. Ask GitHub Copilot to help with any of these:
-   - *"Add Azure Key Vault and move AZURE_AI_KEY to a Key Vault secret reference."*
-   - *"Switch the AI integration from API key auth to managed identity using DefaultAzureCredential."*
-   - *"Add rate limiting to the generate-steps endpoint, max 10 calls per userId per hour."*
-   - *"Change the function auth level from Anonymous to Function and configure the iOS app to send the function key."*
-
-   See [Production Hardening (Out of Scope)](./PLAN.md#production-hardening-out-of-scope) in the `PLAN.md` overview for the full list of recommendations.
+Every gate is a command that exits `0` on success. The full list, with the directory each one runs from, is in [Quality Gates](./PLAN.md#quality-gates): API tests, the red-tag diffs, the local and deployed verifier, the iOS tests, the infrastructure check, and Verify Before Merge.
 
 ---
 
 ## Cleanup
 
 > [!CAUTION]
-> This procedure permanently deletes the Function App, SQL database, Microsoft Foundry resource, and all journey data. Save anything that you want to keep before you continue.
+> This procedure permanently deletes the Function App, SQL database, Microsoft Foundry resource, and all journey data.
 
-Read and save the generated resource group name:
+Read and save the resource group name, then remove the resources from `journeys/smart-todo`:
 
 ```text
 azd env get-value RESOURCE_GROUP_NAME
-```
-
-Run the cleanup from the `journeys/smart-todo` directory:
-
-```text
 azd down --force --purge
 ```
 
-The command must exit successfully. Verify that the generated resource group is gone:
+Confirm that `az group exists --name <resource-group-name>` returns `false`. If cleanup reports a soft-deleted Cognitive Services resource, purge it as described in [Troubleshooting](#troubleshooting).
 
-```text
-az group exists --name <resource-group-name>
-```
-
-The command must return `false`. If cleanup reports a soft-deleted Cognitive Services resource, purge it with the procedure in [Troubleshooting](#soft-deleted-cognitive-services-blocks-redeployment).
+Remove the Phase 2 worktree with `git worktree remove ../../../smart-todo-ios`. If you set up the release pipeline, also delete its recorded role assignments, then the identity resource group whose name you recorded during setup, then the repository variables, as the [Release Pipeline](./PLAN-phase4-factory.md#release-pipeline-optional) cleanup describes. Keep or delete the GitHub repository as you prefer.
 
 ---
 
 ## What's Next
 
-Explore the other journeys:
-
-- [AIMarket](../aimarket/README.md) — full-stack marketplace from a spec with AI Search + Foundry chat
-- [Superset](../superset/README.md) — AKS deep dive
-- Deploy another OSS app with `@oss-to-azure-deployer`
+- [AIMarket](../aimarket/README.md): a full-stack marketplace with AI Search and Foundry chat
+- [Superset](../superset/README.md): an AKS deep dive
+- Deploy an open-source app with `@oss-to-azure-deployer`
+- Point your factory at your own idea: write a `PLAN.md` with Decision Points and Quality Gates, and start at Phase 0
 
 > 📚 **All journeys:** [Back to root README](../../README.md#agentic-journeys)
 
@@ -1040,14 +745,10 @@ Explore the other journeys:
 
 ## Resources
 
-- [SmartTodo Plan](./PLAN.md): Vision, shared decisions, phase map, and end-to-end acceptance criteria
-- [Phase 1 API and AI Plan](./PLAN-phase1-api.md): API, data, seed-data, and AI task-decomposition requirements
-- [Phase 2 iOS Plan](./PLAN-phase2-ios.md): SwiftUI client requirements
-- [Phase 3 Azure Plan](./PLAN-phase3-azure.md): Infrastructure and deployment requirements
-- [Azure Functions Flex Consumption plan](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan)
-- [Azure Functions developer guide](https://learn.microsoft.com/azure/azure-functions/functions-reference)
-- [Azure SQL managed identity auth](https://learn.microsoft.com/azure/azure-sql/database/authentication-aad-configure)
-- [Microsoft Foundry (AI Services)](https://learn.microsoft.com/azure/ai-services/)
+- [SmartTodo Plan](./PLAN.md) and the phase plans: [API](./PLAN-phase1-api.md), [iOS](./PLAN-phase2-ios.md), [Azure](./PLAN-phase3-azure.md), [Factory](./PLAN-phase4-factory.md)
+- [Copilot CLI](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/use-copilot-cli), [autopilot](https://docs.github.com/en/copilot/concepts/agents/copilot-cli/autopilot), and [/fleet](https://docs.github.com/en/copilot/concepts/agents/copilot-cli/fleet)
+- [Creating custom agents](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/create-custom-agents)
+- [Configuring settings for the Copilot cloud agent](https://docs.github.com/en/copilot/how-tos/use-copilot-agents/cloud-agent/configuring-agent-settings)
+- [About rulesets](https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets)
+- [Flex Consumption](https://learn.microsoft.com/azure/azure-functions/flex-consumption-plan), [Azure SQL managed identity](https://learn.microsoft.com/azure/azure-sql/database/authentication-aad-configure), [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/indexes/bicep/), and [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/)
 - [SwiftUI tutorials](https://developer.apple.com/tutorials/swiftui)
-- [Azure Verified Modules](https://azure.github.io/Azure-Verified-Modules/indexes/bicep/)
-- [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/)

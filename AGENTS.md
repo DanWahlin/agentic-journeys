@@ -47,6 +47,7 @@ This repo uses GitHub Copilot's **agents** and **skills** for organized AI assis
 | Agent | Purpose | When to Use |
 |-------|---------|-------------|
 | `@oss-to-azure-deployer` | Deploy OSS apps to Azure | Full deployment journey: requirements -> IaC -> deploy -> verify |
+| `tdd-builder` | Red/green test-driven implementation of an issue or plan section | SmartTodo phases and the Phase 4 cloud agent: failing tests first, then code, without changing the tests |
 
 ### Available Skills
 
@@ -67,11 +68,12 @@ Skills are loaded automatically based on context:
 | `journey-runner` | Run a journey end-to-end: extract prompts, build, deploy, verify |
 | `journey-template` | Create a new agentic journey from an app idea (full-stack or OSS deployment) |
 | `journey-test-harness` | Run all journeys as a test suite: build, deploy, screenshot, teardown, report |
+| `grill-plan` | Interview the user about an issue or plan before coding, including each plan's Decision Points, and produce a Decisions table and test list |
 
 ### Workflow
 
 1. **OSS deployments:** Use `@oss-to-azure-deployer` to guide the entire journey
-2. **Full-stack journeys (e.g., AIMarket):** Follow the journey's PLAN.md and use skills as needed
+2. **Full-stack journeys (e.g., AIMarket, SmartTodo):** Follow the journey's PLAN.md and use skills as needed. SmartTodo uses `grill-plan` and `tdd-builder` with deterministic gates for every phase
 3. **Skills load automatically** based on the app being deployed
 4. **Azure MCP tools** provide real-time schema lookups, deployment planning, and troubleshooting
 5. **Troubleshooting:** Reference app-specific troubleshooting.md files and use `azure_deploy_app_logs`
@@ -262,15 +264,18 @@ journeys/
 ├── aimarket/                     # Full-stack journey (API + frontend + AI)
 │   ├── README.md
 │   └── PLAN.md
-├── smart-todo/                   # Full-stack journey (iOS + Functions + AI)
+├── smart-todo/                   # Full-stack journey (iOS + Functions + AI), test-first with GitHub gates
 │   ├── README.md
-│   └── PLAN.md
+│   ├── PLAN.md                   # Vision, quality gates, CI, rulesets, branches
+│   ├── PLAN-phase1-api.md … PLAN-phase4-factory.md
+│   └── images/                   # Architecture diagram and UI mockups
 └── weather-view/                 # Static web journey (vanilla JS + Static Web Apps)
     ├── README.md
     └── PLAN.md
 .github/
 ├── agents/
-│   └── oss-to-azure-deployer.agent.md
+│   ├── oss-to-azure-deployer.agent.md
+│   └── tdd-builder.agent.md
 └── skills/
     ├── n8n-azure/                # n8n-specific config
     │   ├── SKILL.md
@@ -293,6 +298,8 @@ journeys/
     └── journey-runner/          # Run journeys end-to-end: prompts → build → deploy → verify
         └── SKILL.md
     └── journey-test-harness/   # Test suite: run all journeys, deploy, screenshot, teardown
+        └── SKILL.md
+    └── grill-plan/             # Plan interview before coding: decisions + test list
         └── SKILL.md
 AGENTS.md                         # This file
 README.md

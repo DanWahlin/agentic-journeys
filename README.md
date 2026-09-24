@@ -131,7 +131,7 @@ Each journey is self-contained — jump into whichever one fits what you want to
 | [n8n](./journeys/n8n/README.md) | Deploy workflow automation with PostgreSQL, health probes, and post-provision hooks. | ~$25–35/month |
 | [Apache Superset](./journeys/superset/README.md) | Deploy a BI platform to AKS: init containers, ConfigMaps, Kubernetes debugging. | ~$200–215/month |
 | [AIMarket](./journeys/aimarket/README.md) | Build a full-stack marketplace from a spec: API + React + AI Search + Foundry chat. | ~$100–115/month |
-| [SmartTodo](./journeys/smart-todo/README.md) | Build an AI todo app: Azure Functions, Azure SQL with managed identity, SwiftUI client. | ~$10–30/month |
+| [SmartTodo](./journeys/smart-todo/README.md) | Build an AI todo app test-first: GitHub issues, plan interviews, red/green TDD, CI gates, and a cloud agent factory, deployed to Azure Functions, Azure SQL, and Foundry with a SwiftUI client. | ~$10–30/month |
 
 > **Tip:** Complete a journey and run `azd down --force --purge` the same day. Cost estimates are “if left on for a month,” not what you pay for a single lab session.
 
@@ -148,6 +148,7 @@ Each journey is self-contained — jump into whichever one fits what you want to
 | Azure Functions | | | | | | ✅ |
 | Microsoft Foundry / LLMs | | | | | ✅ | ✅ |
 | Azure AI Search | | | | | ✅ | |
+| Test-first gates + GitHub workflow (issues, PRs, rulesets, cloud agent) | | | | | | ✅ |
 
 ---
 

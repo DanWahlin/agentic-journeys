@@ -121,6 +121,8 @@ The reported major version must be `v3`.
 
 Use Microsoft's [Core Tools installation guide](https://learn.microsoft.com/azure/azure-functions/functions-run-local#install-the-azure-functions-core-tools). Avoid global npm installation with elevated permissions.
 
+On Mac, newer Homebrew versions refuse to load formulas from third-party taps until you trust them. If `brew install` or `brew link` reports `Refusing to load formula ... from untrusted tap`, run `brew trust --formula azure/functions/azure-functions-core-tools`, then `brew link azure/functions/azure-functions-core-tools@4`.
+
 ```text
 func --version
 ```
@@ -129,7 +131,7 @@ The reported major version must be `4`.
 
 ### Azurite
 
-SmartTodo's default local Functions configuration uses `UseDevelopmentStorage=true`, so local execution requires Azurite unless the generated app is configured for a real Azure Storage account. Prefer a project-local development dependency:
+SmartTodo's default local Functions configuration uses `UseDevelopmentStorage=true`, so local execution requires Azurite unless the generated app is configured for a real Azure Storage account. SmartTodo installs it as a project-local development dependency and starts it with `npm run azurite`. To add it to another project:
 
 ```text
 npm install --save-dev azurite
@@ -173,7 +175,7 @@ Don't run `--with-deps` silently. Use Playwright's bundled `chromium`, not the b
 
 ## SmartTodo local SQL on ARM64
 
-The standard Microsoft SQL Server Linux container is AMD64-only. On Apple Silicon, Windows ARM64, or Linux ARM64, prefer the deployed Azure SQL database unless Docker's AMD64 emulation has already been enabled and verified. The journey runner must not install privileged QEMU/binfmt handlers automatically.
+SmartTodo runs locally with an in-memory store (`DATA_PROVIDER=memory`), so local SQL is optional. If you choose to run SQL Server locally, note that the standard Microsoft SQL Server Linux container is AMD64-only. On Apple Silicon, Windows ARM64, or Linux ARM64, prefer the deployed Azure SQL database unless Docker's AMD64 emulation has already been enabled and verified. The journey runner must not install privileged QEMU/binfmt handlers automatically.
 
 ## ARM64 hosts and Azure Static Web Apps
 
