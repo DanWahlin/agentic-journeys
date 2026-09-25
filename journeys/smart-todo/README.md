@@ -692,7 +692,7 @@ The next step is a factory that runs without anyone starting it. This repository
 | A soft-deleted Cognitive Services account blocks redeployment | `az cognitiveservices account list-deleted`, then `az cognitiveservices account purge --name <name> --resource-group <rg> --location <location>`. |
 | `azd deploy` fails during the Oryx TypeScript build | Don't exclude `src/` or `tsconfig.json` in `.funcignore`. |
 | The iOS app can't reach the API | Locally, the API must run on `localhost:7071`. For Azure, `Config.apiBaseURL` must match `azd env get-value API_URL`, use `https://`, and have no trailing slash. |
-| The `ios` check fails in CI but passes on your Mac | GitHub's macOS runner is slower and may use an older iOS runtime. Read the assertion line that `test-ios.mjs` prints. If it's a timeout, rerun once with `gh run rerun <run-id> --failed`; if it fails again, fix the test's waits in a red/green loop. |
+| The `ios` check fails in CI but passes on your Mac | GitHub's macOS runners are much slower than a Mac. Read the assertion line that `test-ios.mjs` prints. If a UI test wait timed out, give every wait at least 10 seconds, as [Test Strategy](./PLAN-phase2-ios.md#test-strategy) requires; short waits failed about one CI run in eight. |
 | The simulator says the application failed preflight checks | Uninstall SmartTodo from the simulator, restart it, run **Product > Clean Build Folder**, and launch again. |
 | The first request after idle takes 5–10 seconds | Expected: Flex Consumption scales to zero, and the first request after a deployment also applies database migrations. |
 
