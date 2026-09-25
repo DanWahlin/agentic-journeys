@@ -14,7 +14,7 @@ Deploying is the easy part for an agent. Getting a result worth deploying is the
 
 - Turn an architecture diagram into GitHub issues, and settle ambiguous requirements in a plan interview (`grill-plan`) before any code exists
 - Drive an agent with red/green test-driven development (`tdd-builder` and `/autopilot`), and prove it didn't change the tests
-- Gate every phase with commands that pass or fail: unit and contract tests, a black-box API verifier, iOS UI tests, and an infrastructure check
+- Gate every phase with commands that pass or fail: unit and contract tests, a black-box API verifier, iOS UI tests, an infrastructure check, and a deploy-and-verify step before risky pull requests merge
 - Ship dependent work as a stack of pull requests with GitHub Stacked PRs (`gh stack`), required checks, and Copilot code review
 - Review the architecture's cost with an agent, then deploy Azure Functions, Azure SQL with managed identity, and Microsoft Foundry with `azd`
 - Capture what worked as a skill, a script that needs no AI, and a Copilot cloud agent setup that builds the next feature
@@ -105,6 +105,27 @@ issue ─► grill the plan ─► red: failing tests ─► green: code ─► 
 | Run the gate commands and believe only their exit codes | Runs the same gates before it says it's done |
 | Triage review findings | Fixes them through another red/green loop |
 
+### How Agentic AI is Used
+
+Each of these tools does a job you'd otherwise do by hand:
+
+| Where | Tool | What it does in this journey |
+| --- | --- | --- |
+| Copilot CLI | `@file` and `#issue` mentions | Attach the diagram and mockups, and point prompts at issues and pull requests |
+| Copilot CLI | [`grill-plan`](../../.github/skills/grill-plan/SKILL.md) skill | Interviews you about the plan's Decision Points and posts the decisions to the issue |
+| Copilot CLI | [`tdd-builder`](../../.github/agents/tdd-builder.agent.md) custom agent | Writes failing tests (red), then code that passes them (green), without changing the tests |
+| Copilot CLI | `/autopilot` | Keeps working until the objective passes; `/plan` and `/fleet` split work across subagents (optional) |
+| Copilot CLI | `/review` and `/rubber-duck` | Local code review and a second opinion before you open a pull request |
+| Copilot CLI | Azure Skills plugin | Pricing, Bicep schemas, and deployment checks for the cost review and the infrastructure |
+| GitHub | Rulesets, CI, and Copilot code review | Block the merge until the checks pass and the review threads are resolved |
+| GitHub | Stacked pull requests (`gh stack`) | Keep three dependent phases reviewable as separate pull requests |
+| GitHub | Copilot cloud agent with `copilot-setup-steps.yml` | Delivers a feature from an issue in its own sandbox, through the same gates |
+| Your repository | Skills, scripts, and an agentic workflow | Turn what worked into something repeatable, then automatic |
+
+Prompts that say "Use the tdd-builder agent" or "Use the grill-plan skill" load them from `.github/agents` and `.github/skills`; `/agent` and `/skills` list what's available. Run shell commands such as `gh stack` in a second terminal, or inside Copilot with a `!` prefix (`!gh stack view`). The app itself uses AI too: gpt-5-mini breaks each goal into steps, with an explicit output format and defensive parsing.
+
+### The workflow
+
 **Phases 1 to 3 are one stack of pull requests.** They depend on each other, so they ship as a [GitHub stack](./PLAN.md#stacked-pull-requests):
 
 ```text
@@ -117,14 +138,14 @@ Each pull request shows only its own phase's changes, and you can start the next
 
 Steps marked 🐙 use GitHub.com features and need your own repository.
 
-**Which model?** Use a frontier model for the plan interview, the red phases, and infrastructure. Smaller models are often enough for green phases, because the tests tell them exactly when they're done. Check spending with `/usage`, and start a session with `copilot --max-ai-credits <n>` to cap it.
+**Which model?** Use a frontier model for the plan interview, the red phases, and infrastructure (`/model` switches it). Smaller models are often enough for green phases, because the tests tell them exactly when they're done. Check spending with `/usage`. To cap it, add `--max-ai-credits <n>` after `/autopilot`, set a session limit with `/limits`, or start with `copilot --max-ai-credits <n>`.
 
 **Without Copilot code review:** run the setup script with `--no-copilot-review`, and run `/review` before you open each pull request instead. Triage its findings with the same rules. Everything else is unchanged.
 
 <details>
 <summary><strong>When something fails</strong></summary>
 
-AI code generation isn't deterministic, so expect an occasional failure. Stay in the same Copilot session, remove secrets from the output, and use this prompt:
+AI code generation isn't deterministic, so expect an occasional failure. If a prompt stops on a network error, run `/resume`, pick the session, and say "continue". For a failed command, stay in the same Copilot session, remove secrets from the output, and use this prompt:
 
 ```text
 The following command failed during <journey phase> on <OS and shell>:
@@ -204,7 +225,7 @@ You'll build the Azure Functions API with Node.js and TypeScript. Locally, it us
 
 ### Step 1: Grill the plan
 
-Create the stack with its first layer, then start the interview in an interactive `copilot` session:
+Create the stack with its first layer (in a second terminal, or with `!` in Copilot), then start the interview:
 
 ```text
 gh stack init --base main phase-1-api
@@ -308,14 +329,14 @@ Leave the API running for Phase 2. After a later fix to Phase 1, run `git checko
   security, and contract issues.
 ```
 
-Decide what to do with each finding, then hand it back:
+Decide what to do with each finding, then hand it back in the same session, so the agent still has the findings:
 
 ```
 > Triage these /review findings with the "Review Triage" section of
   PLAN.md: fix <numbers>, file <number> as a known-limitation issue.
 ```
 
-The agent writes each fix as a new red commit (moving the `phase1-red` tag), then a green commit. For a second opinion, run `/rubber-duck` with a different model.
+The agent writes each fix as a new red commit (moving the `phase1-red` tag), then a green commit. For a second opinion, run `/rubber-duck`.
 
 ### Step 6: Ship through the gate 🐙
 
@@ -325,7 +346,7 @@ The agent writes each fix as a new red commit (moving the `phase1-red` tag), the
   close #<api-issue> and include the gate results. Don't merge it.
 ```
 
-Watch the checks with `gh pr checks --watch`. Copilot code review posts one review a few minutes after the pull request opens (`gh pr view --json reviews`). Wait for it: its comments only block the merge once they exist. Start Phase 2 in the meantime. When the review arrives, read it, then hand it to the agent:
+Watch the checks with `gh pr checks --watch`. Copilot code review posts one review a few minutes after the pull request opens (`gh pr view --json reviews`). Wait for it: its comments only block the merge once they exist. Start Phase 2 in the meantime. When the review arrives, read it, then hand it to the agent between Phase 2 prompts, not while one is running, because both work in the same checkout:
 
 ```
 > Handle the Copilot code review on pull request #<pr-number> with the
@@ -350,7 +371,7 @@ This phase starts from [mockups](./images/mockups/smart-todo-mockups.png) instea
 
 ### Step 1: Add the iOS layer to the stack
 
-From the top of the stack, add the next layer. It starts from the Phase 1 code, whether or not Phase 1 has merged:
+From the top of the stack, add the next layer. It starts from the Phase 1 code:
 
 ```text
 gh stack top
@@ -373,15 +394,16 @@ gh stack add phase-2-ios
   Strategy" section. Tag the red commit phase2-red.
 ```
 
-On a Mac, run `node scripts/test-ios.mjs`. The build must succeed, the starter's tests must pass, and the new ones must fail. Compare the UI test's steps with the mockups, and check that each Decision Point has a test.
+On a Mac, run `node scripts/test-ios.mjs --check-starter`. The build must succeed, the starter's tests must pass unchanged, and the new ones must fail. Compare the UI test's steps with the mockups, and check that each Decision Point has a test.
 
 ### Step 3: Green
 
 ```
 > /autopilot Use the tdd-builder agent for the green phase of issue
   #<ios-issue>. Build the Todo Detail screen from the mockups and
-  PLAN-phase2-ios.md until "node scripts/test-ios.mjs" passes. Do not change the test targets
-  or scripts/test-ios.mjs. Commit the result as a green commit.
+  PLAN-phase2-ios.md until "node scripts/test-ios.mjs" passes. Do not
+  change the test targets or scripts/test-ios.mjs. Commit the result as a
+  green commit.
 ```
 
 **Gate (Mac):** All three commands must exit `0`:
@@ -554,6 +576,8 @@ Use a prompt to discover how to do something, a skill to repeat it well, and a s
 
 ### Step 7: Ship 🐙
 
+Optionally, run `/security-review` first. It reviews uncommitted changes, which at this point are the infrastructure, the hook, and the scripts.
+
 ```
 > Commit the infrastructure, skill, and scripts. Open the pull request for
   this stack layer with gh stack submit --auto --open. Then edit it: title
@@ -607,6 +631,8 @@ The cloud agent branches from `main` when you assign it, so confirm that `git lo
 
 To assign from the command line instead, see [Assign the Cloud Agent](./PLAN-phase4-factory.md#assign-the-cloud-agent).
 
+You can also hand work to the cloud agent from the CLI: `/delegate` sends your current session to GitHub, and Copilot opens a pull request from it. Assigning the issue is the better fit here, because it starts from the issue's full description.
+
 **Without the cloud agent:** create a worktree for the issue and run the tdd-builder agent's full cycle locally: `Use the tdd-builder agent for the full cycle of issue #<number>.` Then ship it through the same pull request steps.
 
 ### Step 3: Be the reviewer
@@ -616,7 +642,7 @@ To assign from the command line instead, see [Assign the Cloud Agent](./PLAN-pha
 3. Select **Ready for review** (`gh pr ready <number>`); a draft can't merge, and Copilot code review starts only after the pull request leaves draft. Remove the `[WIP]` prefix from the title, because the squash commit on `main` uses it.
 4. Triage the Copilot code review. Put every fix in one `@copilot` comment so the agent pushes once.
 5. Run [Verify Before Merge](./PLAN.md#verify-before-merge): `gh pr checkout <number>`, `azd deploy api`, and the deployed verifier. On a Mac, also run `node scripts/test-ios.mjs` and the app from the branch. CI runs in UTC, so a time-zone bug in date code passes the `ios` check and fails on your Mac.
-6. When every thread is resolved, approve the pull request and enable auto-merge.
+6. The agent replies to review threads but doesn't always resolve them. Check each fix, resolve its thread, then approve the pull request and enable auto-merge.
 
 ### Step 4 (optional): Ship on merge
 
@@ -659,7 +685,7 @@ The next step is a factory that runs without anyone starting it. This repository
 | Storage Account | Standard LRS | ~$1 |
 | **Total** | | **~$10-30/month** |
 
-**Copilot (the whole journey, with a frontier model):** about 2,000–2,500 AI credits in local sessions, measured in the last validation run: roughly 50 for Phase 0, 800 for Phase 1 (2,000 with the optional `/fleet`), 400 for Phase 2, 650 for Phase 3, and 100 for Phase 4, plus the cloud agent's own sessions. Review triage and the red phases are the largest costs. Start `copilot --max-ai-credits <n>` to cap a session.
+**Copilot (the whole journey, with a frontier model):** about 2,000–2,500 AI credits in local sessions, measured in the last validation run: roughly 50 for Phase 0, 800 for Phase 1 (2,000 with the optional `/fleet`), 400 for Phase 2, 650 for Phase 3, and 100 for Phase 4, plus the cloud agent's own sessions. Review triage and the red phases are the largest costs. Cap a run with `/autopilot --max-ai-credits <n>`, or a session with `/limits`.
 
 **GitHub Actions:** free for public repositories on standard runners. For private repositories, macOS minutes (the `ios` check) count at a higher rate than Linux and Windows minutes. The Copilot cloud agent uses Actions minutes too.
 
@@ -721,24 +747,6 @@ azd down --force --purge
 Confirm that `az group exists --name <resource-group-name>` returns `false`. If cleanup reports a soft-deleted Cognitive Services resource, purge it as described in [Troubleshooting](#troubleshooting).
 
 Remove the API worktree with `git worktree remove ../../../smart-todo-api`. If you set up the release pipeline, also delete its recorded role assignments, then the identity resource group whose name you recorded during setup, then the repository variables, as the [Release Pipeline](./PLAN-phase4-factory.md#release-pipeline-optional) cleanup describes. Keep or delete the GitHub repository as you prefer.
-
----
-
-<details>
-<summary>How Agentic AI is Used</summary>
-
-## How Agentic AI is Used
-
-| Layer | What it demonstrates |
-|-------|----------------------|
-| **Planning and interviews** | Copilot turns a diagram into issues, and `grill-plan` makes you decide the ambiguous parts first |
-| **Test-driven generation** | `tdd-builder` writes failing tests, then code, and a diff proves the tests held |
-| **Review** | `/review` and Copilot code review catch what tests and plans missed |
-| **Cloud and infrastructure** | Copilot estimates cost and generates Bicep until a deterministic gate passes |
-| **Delegation** | The Copilot cloud agent delivers a feature through the same gates |
-| **Inside the app** | gpt-5-mini breaks goals into steps, with an explicit output format and defensive parsing |
-
-</details>
 
 ---
 
