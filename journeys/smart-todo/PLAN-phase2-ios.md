@@ -50,7 +50,7 @@ src/ios/
 | `SmartTodoTests/` | `APIClient` request and decoding tests, `InMemoryAPIClient` parity tests, `TodoStore` tests, and the shared `MockAPIClient` in `TestSupport.swift` |
 | `SmartTodoUITests/SmartTodoListUITests.swift` | The seeded list and adding a todo |
 
-Phase 2 adds `SmartTodo/TodoDetailViewModel.swift`, replaces `SmartTodo/TodoDetailView.swift` with `TodoDetailView` and `ActionStepsView`, and adds their tests. Call the existing `TodoStore` and `APIClientProtocol`; don't change the starter's other files unless a test proves a bug in them.
+Phase 2 adds `SmartTodo/TodoDetailViewModel.swift`, replaces `SmartTodo/TodoDetailView.swift` with `TodoDetailView` and `ActionStepsView`, and adds their tests as new files. Call the existing `TodoStore` and `APIClientProtocol`. Don't change the starter's other app files unless a test proves a bug in them, and never change or delete the starter's test files: the gate checks them.
 
 The project uses Xcode's synchronized folders, so every file inside `SmartTodo/`, `SmartTodoTests/`, or `SmartTodoUITests/` (including subfolders) belongs to that target automatically. **Don't edit `project.pbxproj`** to add files, and don't convert the project to an older format. Hand-written project files were the slowest and most error-prone step in earlier runs. Name every XCTest method with a `test` prefix; XCTest silently skips methods without it.
 
@@ -189,7 +189,8 @@ The starter's tests already cover the API client, `InMemoryAPIClient` parity wit
 - Generating steps sets `isGenerating` while the request is in flight and clears it afterward, even on failure.
 - Generated steps are shown sorted by `order`, and `progressLabel` reads "N of M complete".
 - Toggling a step updates the displayed todo from the reloaded list, so an auto-completed parent shows `completed`.
-- Seven generated steps stay reachable (`TodoDetailLayout.supportsScrolling`, or an equivalent layout contract).
+
+The fake generator always returns four steps, so check that seven steps stay reachable during exploratory testing rather than with a unit test.
 
 **UI test (`SmartTodoUITests`)** launches the app with `-ui-testing` and walks the main flow:
 
@@ -197,7 +198,7 @@ The starter's tests already cover the API client, `InMemoryAPIClient` parity wit
 2. Add "Plan a weekend camping trip" and see it in the list with a `pending` badge.
 3. Open it, tap `generateStepsButton`, and see four steps and "0 of 4 complete".
 4. Check every step and see "4 of 4 complete". Wait for each checkbox's request to finish before tapping the next one.
-5. Go back and see a `completed` badge on the new todo.
+5. Go back and see a `completed` badge on the new todo (`statusBadge-todo-4`; a seed todo is already `completed`, so don't match any badge).
 
 **Red phase:** Add only the stub types the tests need to compile, such as a `TodoDetailViewModel` whose methods do nothing. Commit the tests and tag the commit `phase2-red`. When review findings add tests later, commit them as a new red commit and move the tag with `git tag -f phase2-red`.
 
@@ -205,7 +206,15 @@ The starter's tests already cover the API client, `InMemoryAPIClient` parity wit
 
 `scripts/test-ios.mjs` is checked in with the journey. It skips on anything other than macOS, picks an available iPhone simulator on the newest iOS runtime, runs `xcodebuild test` on the shared scheme, and prints every compiler `error:` line and failed test name when the run fails. Don't change it.
 
-The Phase 2 gate passes when `node scripts/test-ios.mjs` exits `0` on a Mac and `git diff --exit-code phase2-red -- scripts/test-ios.mjs src/ios/SmartTodoTests src/ios/SmartTodoUITests` exits `0`. The `ios` CI job runs the script on a macOS runner.
+With `--check-starter`, it first proves that every test file from `starter/ios` is still in `src/ios`, unchanged, so the red phase can't weaken the starter's tests.
+
+The Phase 2 gate passes when these exit `0` on a Mac:
+
+1. `node scripts/test-ios.mjs --check-starter`
+2. `git diff --exit-code phase2-red -- src/ios/SmartTodoTests src/ios/SmartTodoUITests` (green didn't change the new tests)
+3. `git diff --exit-code main -- scripts/test-ios.mjs starter/ios` (nobody changed the runner or the starter)
+
+The `ios` CI job runs the script without `--check-starter` on a macOS runner, because later features may legitimately change a starter test.
 
 ## Exploratory QA with Computer Use (Optional)
 

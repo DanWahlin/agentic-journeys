@@ -1,6 +1,9 @@
 #!/usr/bin/env node
+// Runs the SmartTodo iOS tests on a simulator. Add --check-starter to also prove
+// that the starter project's tests are still present and unchanged in src/ios.
 
 import { spawnSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -56,6 +59,32 @@ function testSummary(output, exitCode) {
   return summaries?.at(-1) ?? `TEST ${exitCode === 0 ? 'SUCCEEDED' : 'FAILED'}`;
 }
 
+function listFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryPath = path.join(directory, entry.name);
+    return entry.isDirectory() ? listFiles(entryPath) : [entryPath];
+  });
+}
+
+// Every test file that came with starter/ios must still exist, unchanged, in src/ios.
+export function changedStarterTests(projectDir = projectDirectory) {
+  const changed = [];
+  for (const target of ['SmartTodoTests', 'SmartTodoUITests']) {
+    const starterDir = path.join(projectDir, 'starter', 'ios', target);
+    if (!existsSync(starterDir)) continue;
+    for (const starterFile of listFiles(starterDir)) {
+      const relative = path.relative(path.join(projectDir, 'starter', 'ios'), starterFile);
+      const copy = path.join(projectDir, 'src', 'ios', relative);
+      if (!existsSync(copy)) {
+        changed.push(`${relative} (missing)`);
+      } else if (!readFileSync(copy).equals(readFileSync(starterFile))) {
+        changed.push(`${relative} (changed)`);
+      }
+    }
+  }
+  return changed;
+}
+
 function commandExists(tool) {
   return spawnSync('/usr/bin/which', [tool], { encoding: 'utf8' }).status === 0;
 }
@@ -71,7 +100,17 @@ export function runIOSGate({
   log = console.log,
   error = console.error,
   projectDir = projectDirectory,
+  checkStarter = false,
 } = {}) {
+  if (checkStarter) {
+    const changed = changedStarterTests(projectDir);
+    if (changed.length > 0) {
+      for (const file of changed) error(`FAIL starter test ${file}: restore it from starter/ios`);
+      return 1;
+    }
+    log('PASS starter tests are unchanged');
+  }
+
   if (platform !== 'darwin') {
     log('SKIP: iOS tests require macOS and Xcode');
     return 0;
@@ -143,5 +182,5 @@ export function runIOSGate({
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
-  process.exitCode = runIOSGate();
+  process.exitCode = runIOSGate({ checkStarter: process.argv.includes('--check-starter') });
 }

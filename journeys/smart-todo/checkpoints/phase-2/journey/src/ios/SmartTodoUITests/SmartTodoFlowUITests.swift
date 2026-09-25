@@ -19,6 +19,7 @@ final class SmartTodoFlowUITests: XCTestCase {
 
         let newTodo = app.staticTexts["Plan a weekend camping trip"]
         XCTAssertTrue(newTodo.waitForExistence(timeout: 2))
+        XCTAssertEqual(app.staticTexts["statusBadge-todo-4"].label, "pending")
         newTodo.tap()
         XCTAssertEqual(app.buttons["generateStepsButton"].label, "Generate Steps")
         app.buttons["generateStepsButton"].tap()
@@ -33,10 +34,13 @@ final class SmartTodoFlowUITests: XCTestCase {
         }
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
-        let completedBadge = app.staticTexts.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "statusBadge-")
-        ).matching(NSPredicate(format: "label == %@", "completed")).firstMatch
-        XCTAssertTrue(completedBadge.waitForExistence(timeout: 2))
+        let newBadge = app.staticTexts["statusBadge-todo-4"]
+        XCTAssertTrue(newBadge.waitForExistence(timeout: 2))
+        let completed = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "completed"),
+            object: newBadge
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [completed], timeout: 2), .completed)
     }
 
     private func waitForProgress(

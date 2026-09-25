@@ -16,6 +16,7 @@ final class TodoDetailViewModelTests: XCTestCase {
         viewModel.todo.title = "   "
         await viewModel.submitTitle()
         XCTAssertTrue(submittedTitles.isEmpty)
+        XCTAssertEqual(viewModel.todo.title, "Original")
 
         viewModel.todo.title = "  Updated title  "
         await viewModel.submitTitle()
@@ -83,6 +84,20 @@ final class TodoDetailViewModelTests: XCTestCase {
         XCTAssertFalse(viewModel.isGenerating)
     }
 
+    func testFailedGenerationClearsProgressAndShowsError() async {
+        let todo = makeTodo()
+        let client = MockAPIClient()
+        client.generateStepsHandler = { _ in throw TestFailure(message: "Generation failed") }
+        let store = TodoStore(client: client, todos: [todo])
+        let viewModel = TodoDetailViewModel(todo: todo, store: store)
+
+        await viewModel.generate()
+
+        XCTAssertFalse(viewModel.isGenerating)
+        XCTAssertTrue(viewModel.todo.steps.isEmpty)
+        XCTAssertEqual(store.alertMessage, "Generation failed")
+    }
+
     func testGenerationDisplaysOrderedStepsAndProgress() async {
         let todo = makeTodo()
         let generated = makeTodo(
@@ -105,6 +120,27 @@ final class TodoDetailViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.todo.steps.map(\.order), [1, 2, 3, 4])
         XCTAssertEqual(viewModel.progressLabel, "1 of 4 complete")
+    }
+
+    func testToggleShowsReloadedParentStatus() async {
+        let step = makeStep(id: "step-1", order: 1)
+        let todo = makeTodo(stepsGenerated: true, steps: [step])
+        let completedTodo = makeTodo(
+            status: .completed,
+            stepsGenerated: true,
+            steps: [makeStep(id: "step-1", order: 1, isCompleted: true)]
+        )
+        let client = MockAPIClient()
+        client.getTodosHandler = { [completedTodo] }
+        let viewModel = TodoDetailViewModel(
+            todo: todo,
+            store: TodoStore(client: client, todos: [todo])
+        )
+
+        await viewModel.toggle(step: step)
+
+        XCTAssertEqual(viewModel.todo.status, .completed)
+        XCTAssertEqual(viewModel.progressLabel, "1 of 1 complete")
     }
 
     func testSuccessfulDetailDeleteReturnsToListAndRemovesTodo() async {

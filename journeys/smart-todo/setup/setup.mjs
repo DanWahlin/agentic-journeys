@@ -22,7 +22,9 @@ Options:
   --private             Create a private repository (rulesets need GitHub Pro, Team, or Enterprise)
   --start-at <phase>    Start at phase 1, 2, 3, or 4; earlier phases come from checkpoints (default: 1)
   --no-copilot-review   Leave Copilot code review out of the ruleset
+  --allow-unprotected   Continue when the ruleset can't be enforced (the gates then don't block merging)
   --local               Create the local workspace only; skip everything on GitHub
+  --resume              Finish the GitHub steps for an existing workspace after a failure
   --no-wait             Don't wait for the first CI run on main
   --help                Show this help
 `;
@@ -34,7 +36,9 @@ function parseArgs(argv) {
     private: false,
     startAt: 1,
     copilotReview: true,
+    allowUnprotected: false,
     local: false,
+    resume: false,
     wait: true,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -51,19 +55,25 @@ function parseArgs(argv) {
       case '--private': options.private = true; break;
       case '--start-at': options.startAt = Number(value()); break;
       case '--no-copilot-review': options.copilotReview = false; break;
+      case '--allow-unprotected': options.allowUnprotected = true; break;
       case '--local': options.local = true; break;
+      case '--resume': options.resume = true; break;
       case '--no-wait': options.wait = false; break;
       case '--help': case '-h': console.log(USAGE); process.exit(0); break;
       default: fail(`Unknown option: ${arg}\n\n${USAGE}`);
     }
   }
   if (![1, 2, 3, 4].includes(options.startAt)) fail('--start-at must be 1, 2, 3, or 4.');
+  if (options.resume && options.local) fail('--resume only applies to the GitHub steps; drop --local.');
   if (!/^[A-Za-z0-9._-]+$/.test(options.repo)) fail('--repo may contain only letters, digits, ".", "_", and "-".');
   return options;
 }
 
+let recoveryHint = '';
+
 function fail(message) {
   console.error(`FAIL ${message}`);
+  if (recoveryHint) console.error(`\n${recoveryHint}`);
   process.exit(1);
 }
 
@@ -174,15 +184,26 @@ function publish(options) {
   run('gh', ['auth', 'status']);
   const owner = run('gh', ['api', 'user', '--jq', '.login']).stdout;
   const fullName = `${owner}/${options.repo}`;
-  if (run('gh', ['repo', 'view', fullName], { allowFailure: true }).ok) {
-    fail(`${fullName} already exists. Choose another name with --repo.`);
+  const exists = run('gh', ['repo', 'view', fullName], { allowFailure: true }).ok;
+  if (exists && !options.resume) {
+    fail(`${fullName} already exists. Choose another name with --repo, or finish a failed setup with --resume.`);
   }
 
-  step(`Creating ${options.private ? 'private' : 'public'} repository ${fullName} and pushing main`);
-  run('gh', [
-    'repo', 'create', options.repo, options.private ? '--private' : '--public',
-    '--source', workspace, '--remote', 'origin', '--push',
-  ], { cwd: workspace });
+  if (exists) {
+    step(`Resuming with the existing repository ${fullName}`);
+    if (!run('git', ['remote', 'get-url', 'origin'], { cwd: workspace, allowFailure: true }).ok) {
+      run('git', ['remote', 'add', 'origin', `https://github.com/${fullName}.git`], { cwd: workspace });
+    }
+    run('git', ['push', '--set-upstream', 'origin', 'main'], { cwd: workspace });
+  } else {
+    step(`Creating ${options.private ? 'private' : 'public'} repository ${fullName} and pushing main`);
+    run('gh', [
+      'repo', 'create', options.repo, options.private ? '--private' : '--public',
+      '--source', workspace, '--remote', 'origin', '--push',
+    ], { cwd: workspace });
+  }
+  const rerun = ['node', path.relative(process.cwd(), fileURLToPath(import.meta.url)), ...process.argv.slice(2).filter((arg) => arg !== '--resume'), '--resume'];
+  recoveryHint = `The workspace and ${fullName} exist. Fix the problem above, then finish setup with:\n  ${rerun.join(' ')}\nOr start over: delete the workspace and run gh repo delete ${fullName}.`;
   run('gh', [
     'repo', 'edit', fullName,
     '--enable-auto-merge', '--enable-squash-merge', '--delete-branch-on-merge',
@@ -204,18 +225,27 @@ function publish(options) {
   if (!options.copilotReview) {
     ruleset.rules = ruleset.rules.filter((rule) => rule.type !== 'copilot_code_review');
   }
-  const created = run('gh', [
-    'api', '--method', 'POST', `repos/${fullName}/rulesets`, '--input', '-',
-  ], { input: JSON.stringify(ruleset), allowFailure: true });
-  let rulesetStatus = 'NOT ENFORCED';
-  if (created.ok) {
-    const enforcement = JSON.parse(created.stdout).enforcement;
-    rulesetStatus = enforcement === 'active' ? 'active' : `NOT ENFORCED (${enforcement})`;
+  const existing = run('gh', ['api', `repos/${fullName}/rulesets`], { allowFailure: true });
+  const match = existing.ok ? JSON.parse(existing.stdout || '[]').find((item) => item.name === ruleset.name) : undefined;
+  let enforcement;
+  let problem = '';
+  if (match) {
+    enforcement = match.enforcement;
+    console.log(`Ruleset "${ruleset.name}" already exists`);
   } else {
-    console.warn(`WARN The ruleset couldn't be created: ${created.stderr || created.stdout}`);
-    console.warn('     Private repositories need GitHub Pro, Team, or Enterprise for rulesets. The gates still run, but they won\'t block merging.');
+    const created = run('gh', [
+      'api', '--method', 'POST', `repos/${fullName}/rulesets`, '--input', '-',
+    ], { input: JSON.stringify(ruleset), allowFailure: true });
+    if (created.ok) enforcement = JSON.parse(created.stdout).enforcement;
+    else problem = created.stderr || created.stdout;
   }
+  const rulesetStatus = enforcement === 'active' ? 'active' : `NOT ENFORCED${enforcement ? ` (${enforcement})` : ''}`;
   console.log(`Ruleset: ${rulesetStatus}`);
+  if (rulesetStatus !== 'active') {
+    const why = `${problem ? `${problem}\n` : ''}Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public (gh repo edit ${fullName} --visibility public --accept-visibility-change-consequences) and rerun with --resume, or rerun with --resume --allow-unprotected to continue without enforcement.`;
+    if (!options.allowUnprotected) fail(`The ruleset isn't enforced, so nothing blocks merging.\n${why}`);
+    console.warn(`WARN Continuing without an enforced ruleset (--allow-unprotected). The gates still run, but they don't block merging.`);
+  }
 
   let ciStatus = 'not checked (--no-wait)';
   if (options.wait) {
@@ -244,8 +274,13 @@ step('Checking tools');
 run('git', ['--version']);
 if (!options.local) run('gh', ['--version']);
 
-createWorkspace(options.workspace);
-applyCheckpoints(options.workspace, options.startAt);
+if (options.resume) {
+  if (!existsSync(path.join(options.workspace, '.git'))) fail(`--resume needs an existing workspace at ${options.workspace}.`);
+  step(`Resuming with the existing workspace at ${options.workspace}`);
+} else {
+  createWorkspace(options.workspace);
+  applyCheckpoints(options.workspace, options.startAt);
+}
 
 let github;
 if (!options.local) github = publish(options);
@@ -258,7 +293,7 @@ if (github) {
   console.log(`Ruleset: ${github.rulesetStatus}`);
   console.log(`CI on main: ${github.ciStatus}`);
 }
-console.log(`\nNext: cd ${path.relative(process.cwd(), workDir) || '.'} and start copilot.`);
+console.log(`\nNext: cd ${workDir} and start copilot.`);
 
 const ciFailed = github && options.wait && !github.ciStatus.startsWith('success');
 process.exit(ciFailed ? 1 : 0);

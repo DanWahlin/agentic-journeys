@@ -79,7 +79,3 @@ final class TodoDetailViewModel: ObservableObject {
         store.replace(updated)
     }
 }
-
-enum TodoDetailLayout {
-    static let supportsScrolling = true
-}

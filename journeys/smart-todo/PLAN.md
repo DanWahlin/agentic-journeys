@@ -63,7 +63,7 @@ It does the following, and stops before changing anything if the workspace direc
 4. With `--start-at <phase>`, adds the earlier phases from [Checkpoints](#checkpoints) as a second commit.
 5. Unless `--local` is given, creates the GitHub repository (public unless `--private`), pushes `main`, enables auto-merge, squash merging, and head-branch deletion, creates the `phase-1`, `phase-2`, `phase-3`, and `known-limitation` labels, applies `setup/ruleset.json` as described in [Repository Protection](#repository-protection) (`--no-copilot-review` leaves that rule out), and waits for the first CI run on `main`.
 
-It prints the ruleset's enforcement and the CI result, and exits non-zero if CI didn't succeed. Run it with `--help` for every option.
+It prints the ruleset's enforcement and the CI result, and exits non-zero if the ruleset isn't active or CI didn't succeed. After a failure on GitHub, fix the cause and rerun with `--resume`, which reuses the workspace and repository. Run it with `--help` for every option.
 
 ## Checkpoints
 
@@ -138,8 +138,9 @@ No phase ships until its gate passes. A gate is a command with a deterministic e
 | 1 | `npm run check` in `src/api` | Type checks, unit tests, and contract tests pass without Azure | `api` |
 | 1 | `git diff --exit-code phase1-red -- src/api/test` | The green phase didn't change the latest red-phase tests | Local only |
 | 1 | `node ../../.github/scripts/verify-smart-todo.mjs --base-url http://localhost:7071` | The running API honors the contract from the outside | `api` |
-| 2 | `node scripts/test-ios.mjs` | The iOS unit tests and UI test pass on a simulator | `ios` (macOS runner) |
-| 2 | `git diff --exit-code phase2-red -- scripts/test-ios.mjs src/ios/SmartTodoTests src/ios/SmartTodoUITests` | The green phase didn't change the red-phase tests or the test runner | Local only |
+| 2 | `node scripts/test-ios.mjs --check-starter` | The iOS unit tests and UI test pass on a simulator, and the starter's tests are present and unchanged | `ios` (macOS runner, without `--check-starter`) |
+| 2 | `git diff --exit-code phase2-red -- src/ios/SmartTodoTests src/ios/SmartTodoUITests` | The green phase didn't change the red-phase tests | Local only |
+| 2 | `git diff --exit-code main -- scripts/test-ios.mjs starter/ios` | Nobody changed the test runner or the starter | Local only |
 | 3 | `node scripts/check-infra.mjs --offline` | Bicep compiles and lints cleanly, and it satisfies the deployment contract | `infra` |
 | 3 | `git diff --exit-code phase3-red -- scripts/check-infra.mjs` | Generating infrastructure didn't weaken the gate | Local only |
 | 3 | `node scripts/check-infra.mjs` | The offline checks plus an `azd provision --preview` what-if run against Azure | Local only |
@@ -189,7 +190,7 @@ It also enables auto-merge, squash merging, and automatic head-branch deletion o
 
 **Without Copilot code review** (your plan doesn't include it), leave the `copilot_code_review` rule out of the ruleset. Run `/review` locally before you open each pull request and triage its findings the same way. Every other gate is unchanged.
 
-Rulesets are enforced on public repositories on every GitHub plan. Private repositories need GitHub Pro, Team, or Enterprise. If the ruleset can't be enforced, report it and continue. The gates still run, but they don't block merging.
+Rulesets are enforced on public repositories on every GitHub plan. Private repositories need GitHub Pro, Team, or Enterprise. If the ruleset can't be enforced, `setup.mjs` stops. Make the repository public and rerun with `--resume`, or rerun with `--resume --allow-unprotected` to continue knowing that the gates run but don't block merging.
 
 ## Review Triage
 

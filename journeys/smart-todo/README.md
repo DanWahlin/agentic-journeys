@@ -391,12 +391,15 @@ On a Mac, run `node scripts/test-ios.mjs`. The build must succeed, the starter's
   or scripts/test-ios.mjs. Commit the result as a green commit.
 ```
 
-**Gate (Mac):** Both commands must exit `0`:
+**Gate (Mac):** All three commands must exit `0`:
 
 ```text
-node scripts/test-ios.mjs
-git diff --exit-code phase2-red -- scripts/test-ios.mjs src/ios/SmartTodoTests src/ios/SmartTodoUITests
+node scripts/test-ios.mjs --check-starter
+git diff --exit-code phase2-red -- src/ios/SmartTodoTests src/ios/SmartTodoUITests
+git diff --exit-code main -- scripts/test-ios.mjs starter/ios
 ```
+
+The first runs the tests and proves the starter's own tests are still intact, the second proves the green phase didn't change the new tests, and the third proves nobody touched the test runner or the starter.
 
 On Windows or Linux, skip to Step 5. The `ios` CI check runs the tests on a macOS runner.
 
@@ -678,10 +681,10 @@ The next step is a factory that runs without anyone starting it. This repository
 | You want Copilot review on the Phase 2 or Phase 3 layer | The ruleset requests it only for pull requests whose base is `main`. Run `gh pr edit <pr-number> --add-reviewer @copilot`. |
 | `gh stack submit` exits with code 9 | Stacked pull requests aren't available for the repository (the feature is in public preview). Open ordinary pull requests with the same bases, and merge them from the bottom up. |
 | The Functions host stops when you switch branches | Run the API from the detached API worktree, not the stack checkout. |
-| The ruleset exists but doesn't block merging | Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public, or continue knowing the gates don't block. |
+| `setup.mjs` says the ruleset isn't enforced | Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public and rerun with `--resume`, or rerun with `--resume --allow-unprotected` to continue knowing the gates don't block merging. |
 | The red phase fails with import or compile errors | Ask the agent for stubs that throw `Not implemented`, so tests compile and fail on assertions. |
 | `xcodebuild` can't find tests, or a new Swift file isn't compiled | Start from `starter/ios`, whose synchronized folders include every file in each target folder and whose shared scheme includes both test targets. Don't edit `project.pbxproj`. |
-| `setup.mjs` says the workspace already exists | Remove `../smart-todo-workspace` or pass `--workspace <path>`. For a new repository name, pass `--repo <name>`. |
+| `setup.mjs` stops partway, or says the workspace or repository already exists | After a failure on GitHub, fix the cause and rerun with `--resume`. To start over, remove `../smart-todo-workspace` and delete the repository, or pass a new `--workspace <path>` and `--repo <name>`. |
 | Functions finds no functions locally | `"main"` in `package.json` must be `"dist/functions/*.js"`, and run `npm run build` before `func start`. |
 | The Function App returns 500 on database calls | The managed identity lacks database access, or `AZURE_SQL_SERVER` isn't the full `<sql-name>.database.windows.net` name. Rerun `node infra/hooks/postprovision.js` as the Microsoft Entra administrator. |
 | AI step generation returns 503 in Azure | Check that `AI_PROVIDER=foundry` and the `AZURE_AI_*` settings exist (without printing values), and that the request uses `max_completion_tokens`, not `max_tokens`. |
