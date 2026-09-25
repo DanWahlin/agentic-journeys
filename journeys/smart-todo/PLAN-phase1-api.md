@@ -94,7 +94,7 @@ Provide two implementations: an in-memory store and an Azure SQL store. The fact
 
 > **Note:** The `update()` method on `TodoRepository` must also support updating `stepsGenerated` (boolean). The `generateSteps` handler sets it to `true` after inserting AI-generated steps. Include `stepsGenerated` as an optional field in the update input type alongside `title` and `status`.
 
-**Node.js entry point note:** Set `"main": "dist/functions/*.js"` in `package.json`. Since `tsconfig.json` uses `rootDir: "src"` and `outDir: "dist"`, source files under `src/functions/` compile to `dist/functions/`. Writing `"main": "dist/src/functions/*.js"` makes Azure Functions Core Tools find zero functions. Keep `test/` out of the build config and type-check it through `tsconfig.check.json` instead.
+**Node.js entry point note:** Set `"main": "dist/functions/*.js"` in `package.json`. Since `tsconfig.json` uses `rootDir: "src"` and `outDir: "dist"`, source files under `src/functions/` compile to `dist/functions/`. Writing `"main": "dist/src/functions/*.js"` makes Azure Functions Core Tools find zero functions. Keep `test/` out of the build config and type-check it through `tsconfig.check.json` instead. Don't add `azure-functions-core-tools` to `package.json`. `func` is a host prerequisite, and as a dependency its install script breaks the remote build that `azd deploy` runs.
 
 **Node.js deployment note:** For `azd` remote/Oryx build, do not exclude `src/` or `tsconfig.json` in `.funcignore`; Azure needs both to compile TypeScript. Exclude `node_modules/`, `test/`, `dist/**/*.map`, and `local.settings.json`.
 
