@@ -44,7 +44,7 @@ export function selectNewestAvailableIPhone(simulatorList) {
 export function actionableXcodeLines(output) {
   const lines = output.split(/\r?\n/);
   const compilerErrors = lines.filter((line) =>
-    /:\d+:\d+:\s+error:/.test(line),
+    /:\d+(?::\d+)?:\s+error:/.test(line),
   );
   const failedTests = lines.filter(
     (line) =>

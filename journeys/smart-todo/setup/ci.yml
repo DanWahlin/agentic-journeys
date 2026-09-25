@@ -153,23 +153,24 @@ jobs:
           Start-Process func.cmd -ArgumentList "start" -NoNewWindow
 
           $ready = $false
-          foreach ($attempt in 1..120) {
+          $deadline = (Get-Date).AddSeconds(180)
+          while ((Get-Date) -lt $deadline) {
             try {
               $response = Invoke-WebRequest `
                 -Uri "http://localhost:7071/api/todos?userId=user-1" `
                 -UseBasicParsing `
-                -TimeoutSec 2
+                -TimeoutSec 10
               if ($response.StatusCode -eq 200) {
                 $ready = $true
                 break
               }
             } catch {
-              Start-Sleep -Seconds 1
             }
+            Start-Sleep -Seconds 2
           }
 
           if (-not $ready) {
-            throw "The API did not become ready within 120 seconds."
+            throw "The API did not become ready within 180 seconds."
           }
 
           node ../../../../.github/scripts/verify-smart-todo.mjs `

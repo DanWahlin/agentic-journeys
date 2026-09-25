@@ -19,7 +19,7 @@ Deploying is the easy part for an agent. Getting a result worth deploying is the
 - Review the architecture's cost with an agent, then deploy Azure Functions, Azure SQL with managed identity, and Microsoft Foundry with `azd`
 - Capture what worked as a skill, a script that needs no AI, and a Copilot cloud agent setup that builds the next feature
 
-> 💰 **Estimated Cost**: ~$10–30/month while the Azure resources exist, mostly Azure SQL and AI tokens, plus about 3,000–4,500 Copilot AI credits for the whole journey. Phases 0 to 2 create no Azure resources. Plan on 6–8 hours across several sessions, most of it agent run time. See [Cost Breakdown](#cost-breakdown), and run [Cleanup](#cleanup) when you finish.
+> 💰 **Estimated Cost**: ~$10–30/month while the Azure resources exist, mostly Azure SQL and AI tokens, plus about 2,000–2,500 Copilot AI credits for the whole journey. Phases 0 to 2 create no Azure resources. Plan on 3–4 hours across a few sessions. About an hour of that is Phase 4's cloud agent working on its own, and you can [start at any phase](#short-on-time-start-at-a-later-phase). See [Cost Breakdown](#cost-breakdown), and run [Cleanup](#cleanup) when you finish.
 
 ## Prerequisites
 
@@ -145,12 +145,12 @@ section. Do not print secrets.
 
 ### Short on time? Start at a later phase
 
-Each phase takes about an hour. To start at a later one, run the setup script with `--start-at <phase>`. It puts the finished code of the earlier phases on `main` from the journey's [checkpoints](./PLAN.md#checkpoints), and every gate still applies to the phase you build. Create all the issues in Phase 0, and close the ones for phases you skipped.
+Phases 1 to 3 take 30–45 minutes each, and Phase 4 about an hour and a half, most of it waiting for the cloud agent. To start at a later one, run the setup script with `--start-at <phase>`. It puts the finished code of the earlier phases on `main` from the journey's [checkpoints](./PLAN.md#checkpoints), and every gate still applies to the phase you build. Create all the issues in Phase 0, and close the ones for phases you skipped.
 
 | Start at | Before you begin |
 | --- | --- |
 | Phase 2 | Start the stack with `gh stack init --base main phase-2-ios` instead of Step 1. To try the app, run the local API as in Phase 1 Step 4, with `main` in place of `phase-1-api`. |
-| Phase 3 | Start the stack with `gh stack init --base main phase-3-azure`. |
+| Phase 3 | Start the stack with `gh stack init --base main phase-3-azure`. A stack with one pull request is an ordinary pull request to GitHub, so merge it with `gh pr merge <pr-number> --squash`. |
 | Phase 4 | Deploy first: run Phase 3 Step 4 from `main`. |
 
 ---
@@ -332,14 +332,7 @@ Watch the checks with `gh pr checks --watch`. Copilot code review posts one revi
   triage procedure in the "Review Triage" section of PLAN.md.
 ```
 
-Copilot reviews each pull request once, so there's no second round. When every check is green and every thread is resolved, merge the layer:
-
-```text
-gh stack merge <pr-number> --yes --squash
-gh stack sync
-```
-
-`gh pr merge` and auto-merge can't merge a stack layer. `gh stack merge` applies the same rules as a merge into `main`, and `gh stack sync` rebases the layers above onto the new `main`.
+Copilot reviews each pull request once, so there's no second round. **Leave the pull request open** when its checks are green and its threads are resolved. The whole stack merges at the end of Phase 3 in one command. Merging this layer early would point the next layer's pull request at `main`, which starts a Copilot review you don't need.
 
 **💡 What you're learning:** Each reviewer finds things the others miss: tests catch contract bugs, `/review` catches gaps in the plan, and Copilot code review caught a model parameter that gpt-5-mini rejects in production. Layers of review pay off. Extra rounds don't, because each one finds something new in the last fix.
 
@@ -434,7 +427,7 @@ Computer Use lets an agent read the running app's accessibility tree and screens
 
 The pull request's base is `phase-1-api`, so it shows only the iOS changes, and GitHub shows both pull requests as one stack. Phases 2 and 3 skip Copilot code review to save time; you ran the full review loop in Phase 1. To get one anyway, run `gh pr edit <pr-number> --add-reviewer @copilot` and triage it with the Phase 1 prompt.
 
-When the checks are green, merge the layer the same way as Phase 1. If Phase 1 hasn't merged yet, `gh stack merge` merges both, as long as both meet every rule.
+Leave this pull request open too; it merges with the rest of the stack in Phase 3.
 
 ---
 
@@ -507,7 +500,7 @@ azd config set auth.useAzCliAuth true
   PLAN-phase3-azure.md describes. Don't run azd up.
 ```
 
-To set the values yourself instead, use the commands in [Environment Preparation](./PLAN-phase3-azure.md#environment-preparation). Then run the full gate, which adds an Azure preview without creating anything:
+To set the values yourself instead, use the commands in [Environment Preparation](./PLAN-phase3-azure.md#environment-preparation). Then run the full gate, which adds an Azure preview. The preview deploys nothing, but `azd` creates the empty, tagged resource group, which `azd up` then uses and [Cleanup](#cleanup) deletes:
 
 ```text
 node scripts/check-infra.mjs
@@ -568,7 +561,14 @@ Use a prompt to discover how to do something, a skill to repeat it well, and a s
   #<azure-issue> and include the verifier's PASS line. Don't merge it.
 ```
 
-When the checks are green, merge the layer with `gh stack merge <pr-number> --yes --squash`, which also lands any layers still below it, then run `gh stack sync --prune` to delete the merged branches. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
+When the checks are green on all three pull requests, merge the whole stack from the top:
+
+```text
+gh stack merge <pr-number> --yes --squash
+gh stack sync --prune
+```
+
+`gh stack merge` lands this pull request and every layer below it, each as its own squash commit on `main`, and merges nothing unless every layer meets every rule. `gh pr merge` and auto-merge can't merge stack layers. `gh stack sync --prune` then deletes the merged branches. From now on, every pull request that changes `src/api` or `infra` also passes [Verify Before Merge](./PLAN.md#verify-before-merge): deploy the branch, run the verifier, and paste the `PASS` line.
 
 ---
 
@@ -659,7 +659,7 @@ The next step is a factory that runs without anyone starting it. This repository
 | Storage Account | Standard LRS | ~$1 |
 | **Total** | | **~$10-30/month** |
 
-**Copilot (the whole journey, with a frontier model):** about 3,000–4,500 AI credits in local sessions, measured in validation runs: roughly 130 for Phase 0, 900 each for Phases 1 (2,100 with the optional `/fleet`), 2, and 3, and 300 for Phase 4 plus its cloud agent sessions. Review triage is the largest cost in each phase. Start `copilot --max-ai-credits <n>` to cap a session.
+**Copilot (the whole journey, with a frontier model):** about 2,000–2,500 AI credits in local sessions, measured in the last validation run: roughly 50 for Phase 0, 800 for Phase 1 (2,000 with the optional `/fleet`), 400 for Phase 2, 650 for Phase 3, and 100 for Phase 4, plus the cloud agent's own sessions. Review triage and the red phases are the largest costs. Start `copilot --max-ai-credits <n>` to cap a session.
 
 **GitHub Actions:** free for public repositories on standard runners. For private repositories, macOS minutes (the `ios` check) count at a higher rate than Linux and Windows minutes. The Copilot cloud agent uses Actions minutes too.
 
@@ -679,6 +679,7 @@ The next step is a factory that runs without anyone starting it. This repository
 | `gh pr merge` or auto-merge fails on a stack layer | Stack layers merge with `gh stack merge <pr-number> --yes --squash`, which also merges the unmerged layers below it. |
 | A layer shows "needs rebase", or the stack merge reports a non-linear history | A lower layer or `main` moved. Run `gh stack sync`, or `gh stack rebase` and then `gh stack push`. On a conflict, resolve it and run `gh stack rebase --continue`. |
 | You want Copilot review on the Phase 2 or Phase 3 layer | The ruleset requests it only for pull requests whose base is `main`. Run `gh pr edit <pr-number> --add-reviewer @copilot`. |
+| `gh stack submit` warns `Could not create stack: Pull request #<n> is merged` | A lower layer merged before the layers above it had pull requests. Link the open ones into a stack with `gh stack link <pr-number> <pr-number>`, bottom first, then merge from the top. |
 | `gh stack submit` exits with code 9 | Stacked pull requests aren't available for the repository (the feature is in public preview). Open ordinary pull requests with the same bases, and merge them from the bottom up. |
 | The Functions host stops when you switch branches | Run the API from the detached API worktree, not the stack checkout. |
 | `setup.mjs` says the ruleset isn't enforced | Rulesets on private repositories need GitHub Pro, Team, or Enterprise. Make the repository public and rerun with `--resume`, or rerun with `--resume --allow-unprotected` to continue knowing the gates don't block merging. |
@@ -691,6 +692,7 @@ The next step is a factory that runs without anyone starting it. This repository
 | A soft-deleted Cognitive Services account blocks redeployment | `az cognitiveservices account list-deleted`, then `az cognitiveservices account purge --name <name> --resource-group <rg> --location <location>`. |
 | `azd deploy` fails during the Oryx TypeScript build | Don't exclude `src/` or `tsconfig.json` in `.funcignore`. |
 | The iOS app can't reach the API | Locally, the API must run on `localhost:7071`. For Azure, `Config.apiBaseURL` must match `azd env get-value API_URL`, use `https://`, and have no trailing slash. |
+| The `ios` check fails in CI but passes on your Mac | GitHub's macOS runner is slower and may use an older iOS runtime. Read the assertion line that `test-ios.mjs` prints. If it's a timeout, rerun once with `gh run rerun <run-id> --failed`; if it fails again, fix the test's waits in a red/green loop. |
 | The simulator says the application failed preflight checks | Uninstall SmartTodo from the simulator, restart it, run **Product > Clean Build Folder**, and launch again. |
 | The first request after idle takes 5–10 seconds | Expected: Flex Consumption scales to zero, and the first request after a deployment also applies database migrations. |
 
@@ -745,7 +747,7 @@ Remove the API worktree with `git worktree remove ../../../smart-todo-api`. If y
 
 ## Lessons from Validation Runs
 
-This journey was run end to end five times before publishing. Each rule below exists because a run broke without it.
+This journey was run end to end six times before publishing. Each rule below exists because a run broke without it.
 
 - **Auto-merge before review merged unreviewed code.** A pull request merged four minutes before Copilot's review posted four real findings. Hence: wait for the review, and require conversation resolution.
 - **Review rounds multiplied.** Every push started a new review, and each round found something in the last fix. Three rounds on one pull request cost more than the implementation. Hence: one round, one push.
@@ -757,6 +759,8 @@ This journey was run end to end five times before publishing. Each rule below ex
 - **Building the whole iOS app took longest.** The green phase ran 48 to 88 minutes. Hence: a starter app with everything except the detail screen.
 - **Review time added up.** Triage took 15 to 30 minutes on each stack layer. Hence: one full review loop in Phase 1, and gates alone for Phases 2 and 3.
 - **A fix renamed a live resource.** A reviewer flagged an App Service plan name that could exceed 40 characters. The first fix changed the name for every environment, and the redeploy created a second plan next to the running one. Hence: never rename a deployed resource, and read the preview for an unexpected `Create`.
+- **One SQL batch hid a schema bug until deployment.** The API sent every migration and seed insert as one batch, so the seed's new column failed to compile before the migration that adds it could run, and the whole API returned 404. Every local test passed; Verify Before Merge caught it. Hence: one request per migration, and connect to the database on the first request, not while the module loads.
+- **Merging the bottom layer early broke the stack.** The next layer's pull request moved to `main`, got an unplanned Copilot review, and GitHub couldn't create the stack because its bottom pull request was already merged. Hence: merge the whole stack once, from the top.
 - **Plan mode blocks writes.** `/fleet` launched while the session was still in plan mode; three subagents designed everything and wrote nothing.
 
 </details>

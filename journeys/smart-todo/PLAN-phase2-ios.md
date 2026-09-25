@@ -204,7 +204,7 @@ The fake generator always returns four steps, so check that seven steps stay rea
 
 ## Quality Gate
 
-`scripts/test-ios.mjs` is checked in with the journey. It skips on anything other than macOS, picks an available iPhone simulator on the newest iOS runtime, runs `xcodebuild test` on the shared scheme, and prints every compiler `error:` line and failed test name when the run fails. Don't change it.
+`scripts/test-ios.mjs` is checked in with the journey. It skips on anything other than macOS, picks an available iPhone simulator on the newest iOS runtime, runs `xcodebuild test` on the shared scheme, and prints every compiler `error:` line, every XCTest assertion failure, and every failed test name when the run fails, so a reviewer or the cloud agent can see why without a Mac. Don't change it.
 
 With `--check-starter`, it first proves that every test file from `starter/ios` is still in `src/ios`, unchanged, so the red phase can't weaken the starter's tests.
 
