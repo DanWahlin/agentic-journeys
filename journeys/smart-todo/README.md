@@ -615,7 +615,7 @@ To assign from the command line instead, see [Assign the Cloud Agent](./PLAN-pha
 2. When a check fails, paste the error line from the check log into a `@copilot` comment. The agent can't build Swift in its Linux environment, so the `ios` check is how it learns the app doesn't compile.
 3. Select **Ready for review** (`gh pr ready <number>`); a draft can't merge, and Copilot code review starts only after the pull request leaves draft. Remove the `[WIP]` prefix from the title, because the squash commit on `main` uses it.
 4. Triage the Copilot code review. Put every fix in one `@copilot` comment so the agent pushes once.
-5. Run [Verify Before Merge](./PLAN.md#verify-before-merge): `gh pr checkout <number>`, `azd deploy api`, and the deployed verifier. On a Mac, also run the app from the branch.
+5. Run [Verify Before Merge](./PLAN.md#verify-before-merge): `gh pr checkout <number>`, `azd deploy api`, and the deployed verifier. On a Mac, also run `node scripts/test-ios.mjs` and the app from the branch. CI runs in UTC, so a time-zone bug in date code passes the `ios` check and fails on your Mac.
 6. When every thread is resolved, approve the pull request and enable auto-merge.
 
 ### Step 4 (optional): Ship on merge
@@ -692,7 +692,7 @@ The next step is a factory that runs without anyone starting it. This repository
 | A soft-deleted Cognitive Services account blocks redeployment | `az cognitiveservices account list-deleted`, then `az cognitiveservices account purge --name <name> --resource-group <rg> --location <location>`. |
 | `azd deploy` fails during the Oryx TypeScript build | Don't exclude `src/` or `tsconfig.json` in `.funcignore`. |
 | The iOS app can't reach the API | Locally, the API must run on `localhost:7071`. For Azure, `Config.apiBaseURL` must match `azd env get-value API_URL`, use `https://`, and have no trailing slash. |
-| The `ios` check fails in CI but passes on your Mac | GitHub's macOS runners are much slower than a Mac. Read the assertion line that `test-ios.mjs` prints. If a UI test wait timed out, give every wait at least 10 seconds, as [Test Strategy](./PLAN-phase2-ios.md#test-strategy) requires; short waits failed about one CI run in eight. |
+| The `ios` check fails in CI but passes on your Mac | GitHub's macOS runners are much slower than a Mac. Read the assertion line that `test-ios.mjs` prints. If a UI test couldn't find an element, check that the screen is a `ScrollView`, not a lazy `Form` or `List`, and that every wait is at least 10 seconds ([Test Strategy](./PLAN-phase2-ios.md#test-strategy)). Each caused CI-only failures in validation runs. |
 | The simulator says the application failed preflight checks | Uninstall SmartTodo from the simulator, restart it, run **Product > Clean Build Folder**, and launch again. |
 | The first request after idle takes 5–10 seconds | Expected: Flex Consumption scales to zero, and the first request after a deployment also applies database migrations. |
 
@@ -761,6 +761,7 @@ This journey was run end to end six times before publishing. Each rule below exi
 - **A fix renamed a live resource.** A reviewer flagged an App Service plan name that could exceed 40 characters. The first fix changed the name for every environment, and the redeploy created a second plan next to the running one. Hence: never rename a deployed resource, and read the preview for an unexpected `Create`.
 - **One SQL batch hid a schema bug until deployment.** The API sent every migration and seed insert as one batch, so the seed's new column failed to compile before the migration that adds it could run, and the whole API returned 404. Every local test passed; Verify Before Merge caught it. Hence: one request per migration, and connect to the database on the first request, not while the module loads.
 - **Merging the bottom layer early broke the stack.** The next layer's pull request moved to `main`, got an unplanned Copilot review, and GitHub couldn't create the stack because its bottom pull request was already merged. Hence: merge the whole stack once, from the top.
+- **A lazy form hid the UI test's target.** The detail screen was a SwiftUI `Form`, which only builds the rows on screen. After the due-date controls pushed the steps down, the UI test failed about one CI run in eight and never locally. Hence: a `ScrollView` for the detail screen, and 10-second waits.
 - **Plan mode blocks writes.** `/fleet` launched while the session was still in plan mode; three subagents designed everything and wrote nothing.
 
 </details>

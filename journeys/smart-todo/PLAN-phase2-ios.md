@@ -130,12 +130,12 @@ Use a `TodoDetailViewModel` (`@MainActor`, `ObservableObject`) that owns the dis
 - Todo title displayed as editable `TextField`
 - Status picker: `Picker` with `pending`, `in_progress`, `completed` options
 - Conditional button:
-  - "✨ Generate Steps" when `stepsGenerated == false`, prominent style. **Do not use `Label` inside a `Form` button**, because `Form` strips the icon. Instead use `HStack { Image(systemName: "sparkles"); Text("Generate Steps") }` with `.frame(maxWidth: .infinity)` and `.buttonStyle(.borderedProminent)`.
+  - "✨ Generate Steps" when `stepsGenerated == false`, prominent style: `HStack { Image(systemName: "sparkles"); Text("Generate Steps") }` with `.frame(maxWidth: .infinity)` and `.buttonStyle(.borderedProminent)`.
   - "🔄 Regenerate Steps" when `stepsGenerated == true`, same `HStack` pattern with `Image(systemName: "arrow.clockwise")` and `.tint(.blue)` for visibility
 - `ProgressView` overlay during AI generation with "Generating steps..." label, and the button disabled while the request is in flight
 - `ActionStepsView` embedded below (if steps exist)
 - "Delete Todo" button at bottom (destructive style, with confirmation alert)
-- Wrap the view in a `ScrollView`, or use `Form`/`List`, so the generate button, action steps, and delete button are reachable however many steps are generated
+- **Build the screen as a `ScrollView` containing a `VStack`, not a `Form` or `List`.** `Form` and `List` create rows lazily, so a row below the visible area isn't in the accessibility tree and the UI test can't find it. With a `Form`, the flow test failed about one CI run in eight once a feature added controls above the steps; with a `ScrollView`, 16 of 16 passed. The `ScrollView` also keeps the generate button, action steps, and delete button reachable however many steps there are.
 
 #### ActionStepsView (Phase 2 builds it)
 
@@ -232,6 +232,6 @@ Computer Use is not a gate. Its results vary between runs, and it needs Screen R
 - The starter's files other than `TodoDetailView.swift` are unchanged, unless a new test proved a bug in them.
 - `TodoDetailView` and `ActionStepsView` match the detail mockups and use the accessibility identifiers in this plan.
 - The generate, regenerate, check-off, progress, and completion flows work against the local API.
-- Generate and regenerate buttons use the Form-safe `HStack` icon pattern and show a loading state during AI generation.
+- `TodoDetailView` is a `ScrollView` with a `VStack`, and the generate and regenerate buttons use the `HStack` icon pattern and show a loading state during AI generation.
 - The Decision Points answers are recorded on the issue and covered by tests.
 - The [Quality Gate](#quality-gate) passes on a Mac, and the `ios` check is green on the pull request.
