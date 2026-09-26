@@ -31,17 +31,12 @@ This journey supports Windows PowerShell, Mac, and Linux.
 
 The signed-in Azure account must have permission to create Container Apps, PostgreSQL Flexible Server, Log Analytics, and managed identity resources.
 
-Run these read-only checks on the host machine before you create Azure resources:
+**Before you start:**
 
-```text
-az version
-az account show --output table
-azd version
-node --version
-copilot --version
-```
-
-Confirm that `az account show` identifies the intended subscription, `azd` is version 1.28.0 or later, and Node.js is a currently supported LTS release. Stop and fix the prerequisite if a command fails or a required version is too old. See the [cross-platform installation guide](../../docs/tool-installation.md) for Windows, Mac, and Linux installation instructions.
+1. Run each command in the Validation column, and install anything that fails. The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options.
+2. Confirm that `az account show --output table` shows the subscription you intend to use.
+3. Run `azd config set auth.useAzCliAuth true`, so `azd` reuses your Azure CLI sign-in.
+4. Inside `copilot`, install the Azure Skills plugin once: `/plugin marketplace add microsoft/azure-skills`, then `/plugin install azure@azure-skills`.
 
 > [!NOTE]
 > GitHub Copilot CLI is the documented and validated command-line path. You may adapt the deployment prompt for the GitHub Copilot app, VS Code agent chat, or another agentic coding tool. For another tool, run: **"Copy or adapt this repository's `.github/skills` into your supported skills or instructions location, preserving their behavior and reporting anything unsupported."**
@@ -98,34 +93,26 @@ graph TB
 
 You'll use `oss-to-azure-deployer` (a custom agent defined in this repo) with GitHub Copilot to generate and deploy the entire infrastructure through conversation.
 
-> **💡 Tip: Track issues as you go.** Add *"If you encounter any issues, log them to issues.md so they can be tracked and fixed"* to your prompt. This keeps generation and deployment problems in one place while you iterate.
+<details>
+<summary><strong>When something fails</strong></summary>
 
-> [!IMPORTANT]
-> **When something fails**
-> These journeys are designed to provide a solid starting point, but you may encounter errors along the way due to the non-deterministic nature of AI code generation. If a command or process fails, follow these steps to get help:
->
-> 1. Stay in the same AI coding session so it retains the journey context.
-> 2. Paste the exact command and relevant error output. Don't paraphrase the error.
-> 3. Include your operating system, shell, current phase, and last successful step.
-> 4. Remove passwords, tokens, connection strings, keys, cookies, and `.env` values before pasting.
-> 5. Ask the agent to inspect the relevant application and Azure logs, explain the root cause, make the smallest safe fix, rerun the failed step, and run the journey verifier.
-> 6. Record the problem and resolution in `issues.md`.
->
-> Use this prompt:
->
-> ```text
-> The following command failed during <journey phase> on <OS and shell>:
->
-> <exact command>
->
-> Relevant error output:
->
-> <redacted error output>
->
-> Inspect the relevant application and Azure logs, explain the root cause,
-> make the smallest safe fix, rerun the failed step, and run the journey
-> verifier. Record the issue and resolution in issues.md. Do not print secrets.
-> ```
+AI-generated infrastructure isn't deterministic, so expect an occasional failure. Stay in the same Copilot session, remove passwords, tokens, keys, and connection strings from the output, and use this prompt:
+
+```text
+The following command failed during <journey phase> on <OS and shell>:
+
+<exact command>
+
+Relevant error output:
+
+<redacted error output>
+
+Inspect the relevant application and Azure logs, explain the root cause,
+make the smallest safe fix, rerun the failed step, and run the journey
+verifier. Record the issue and resolution in issues.md. Do not print secrets.
+```
+
+</details>
 
 ### Step 1: Setup
 
@@ -135,25 +122,10 @@ Run the following steps from the repository root. If you're in the parent direct
 cd agentic-journeys
 ```
 
-Configure `azd` to reuse the signed-in Azure CLI session:
-
-```text
-azd config set auth.useAzCliAuth true
-```
-
-The command must exit successfully.
-
 Start the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started):
 
 ```text
 copilot
-```
-
-If you haven't installed the Azure Skills plugin yet, do it now. This one-time setup adds deployment tools, Bicep schema lookups, and infrastructure generation; see the root [Quick Start](../../README.md#quick-start) for details.
-
-```
-> /plugin marketplace add microsoft/azure-skills
-> /plugin install azure@azure-skills
 ```
 
 Now select the deployment agent. Agents are specialized personas that know how to handle specific tasks:
@@ -165,10 +137,6 @@ Now select the deployment agent. Agents are specialized personas that know how t
 Select **`oss-to-azure-deployer`** from the list. You're now in an interactive session with the deployment agent.
 
 ### Step 2: Deploy
-
-<p align="center">
-  <img src="./images/azure-deployment.webp" alt="Deploy n8n to Azure" width="800" />
-</p>
 
 Give the agent one prompt that covers the location, secrets, health probes, and issue handling:
 
@@ -182,16 +150,17 @@ Give the agent one prompt that covers the location, secrets, health probes, and 
   resolution in issues.md. Do not print secrets.
 ```
 
-The agent handles the entire deployment:
+<p align="center">
+  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, runs azd up, and the verifier checks the result" width="800" />
+</p>
 
-1. Loads the `n8n-azure` and `container-apps-deployment` skills, then follows the Azure plugin pipeline: `azure-prepare` → `azure-validate` → `azure-deploy`
-2. Uses Azure MCP tools to look up Bicep schemas and best practices
-3. Generates modular Bicep infrastructure in `infra-n8n/`
-4. Updates `azure.yaml`, registers Azure providers, sets environment variables
-5. Runs `azd up`
-6. Configures `WEBHOOK_URL` with `infra-n8n/hooks/postprovision.js`, referenced directly from `azure.yaml`. This cross-platform Node.js hook avoids interpolated shell commands and uses the static PowerShell JSON-payload launcher only when Windows must resolve Azure CLI shims. Because the update creates a replacement Container App revision, the hook must not exit until both `/healthz` and `/` return HTTP 200 for six consecutive probes over 30 seconds.
+The agent loads the `n8n-azure` and `container-apps-deployment` skills, uses Azure MCP tools for current Bicep schemas, generates `infra-n8n/`, and runs `azd up`. One setting can't be written up front:
 
-Do not start verification until `azd up` and the `postprovision` hook exit successfully.
+<p align="center">
+  <img src="./images/webhook-url.webp" alt="Setting WEBHOOK_URL after deploy: azd up runs and the URL is assigned (the URL only exists after deployment), then the post-provision hook sets WEBHOOK_URL, a new revision starts, and the hook waits for six healthy checks" width="800" />
+</p>
+
+The post-provision hook, `infra-n8n/hooks/postprovision.js`, sets `WEBHOOK_URL` once the URL exists. That starts a new Container App revision, so the hook waits until `/healthz` and `/` return HTTP 200 six times in a row over 30 seconds. Don't start verification until `azd up` and the hook have both finished.
 
 The deployment takes several minutes. You'll see the agent generating Bicep files, registering Azure providers, and running `azd up`. It may prompt you to confirm your Azure subscription.
 
@@ -200,8 +169,13 @@ The deployment takes several minutes. You'll see the agent generating Bicep file
 > 1. Watch your resources appear in real-time. Open the [Azure Portal](https://portal.azure.com) → search for your resource group (`rg-<env-name>`), or run `az resource list --resource-group rg-<env-name> --output table` in a separate terminal.
 > 2. Look at the [architecture diagram](#architecture) above. Match each box to a resource appearing in the portal.
 > 3. Ask the agent: *"What's happening right now? Walk me through the deployment step by step."*
-> 4. **Quiz yourself:** Why does n8n need an approximately five-minute startup window (`failureThreshold: 10` with `periodSeconds: 30`)? (Hint: expand the collapsed **Configuration Reference** section below and check the Health Probes table.)
-> 5. Browse the [n8n workflow templates](https://n8n.io/workflows/) and pick one you want to try after deployment.
+> 4. Browse the [n8n workflow templates](https://n8n.io/workflows/) and pick one you want to try after deployment.
+
+**Why the probes matter:** n8n takes more than a minute to start. A default probe gives up sooner and restarts the container in a loop, so the agent sets a five-minute startup window instead (10 tries, 30 seconds apart).
+
+<p align="center">
+  <img src="./images/startup-window.webp" alt="Why n8n needs a 5-minute startup window: a default probe kills the container too early, while the startup probe checks /healthz every 30 seconds up to 10 times, and n8n becomes ready after 60 or more seconds" width="750" />
+</p>
 
 You can ask follow-up questions anytime during or after generation:
 
@@ -429,6 +403,8 @@ The command must return `false`.
 ---
 
 ## What's Next
+
+**Take it home:** the same agent deploys other open-source apps. Ask `@oss-to-azure-deployer` *"How would I deploy Uptime Kuma to Azure?"* and compare its plan with this one.
 
 Explore the other journeys:
 

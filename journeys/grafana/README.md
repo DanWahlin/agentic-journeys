@@ -31,17 +31,12 @@ This journey supports Windows PowerShell, Mac, and Linux.
 
 The signed-in Azure account must have permission to create resource groups, Container Apps, managed identities, and Log Analytics resources.
 
-Run these read-only checks on the host machine before you create Azure resources:
+**Before you start:**
 
-```text
-az version
-az account show --output table
-azd version
-node --version
-copilot --version
-```
-
-Confirm that `az account show` identifies the intended subscription, `azd` is version 1.28.0 or later, and Node.js is a currently supported LTS release. Stop and fix the prerequisite if a command fails or a required version is too old. See the [cross-platform installation guide](../../docs/tool-installation.md) for installation instructions.
+1. Run each command in the Validation column, and install anything that fails. The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options.
+2. Confirm that `az account show --output table` shows the subscription you intend to use.
+3. Run `azd config set auth.useAzCliAuth true`, so `azd` reuses your Azure CLI sign-in.
+4. Inside `copilot`, install the Azure Skills plugin once: `/plugin marketplace add microsoft/azure-skills`, then `/plugin install azure@azure-skills`.
 
 > [!NOTE]
 > GitHub Copilot CLI is the documented and validated command-line path. You may adapt the deployment prompt for another agentic coding tool. For another tool, run: **"Copy or adapt this repository's `.github/skills` into your supported skills or instructions location, preserving their behavior and reporting anything unsupported."**
@@ -94,34 +89,26 @@ graph TB
 
 In GitHub Copilot, use the repository's `oss-to-azure-deployer` agent to generate and deploy the infrastructure from your prompts.
 
-> **💡 Tip: Track issues as you go.** Add *"If you encounter any issues, log them to issues.md so they can be tracked and fixed"* to your prompt. This keeps generation and deployment problems in one place while you iterate.
+<details>
+<summary><strong>When something fails</strong></summary>
 
-> [!IMPORTANT]
-> **When something fails**
-> These journeys are designed to provide a solid starting point, but you may encounter errors along the way due to the non-deterministic nature of AI code generation. If a command or process fails, follow these steps to get help:
->
-> 1. Stay in the same AI coding session so it retains the journey context.
-> 2. Paste the exact command and relevant error output. Don't paraphrase the error.
-> 3. Include your operating system, shell, current phase, and last successful step.
-> 4. Remove passwords, tokens, connection strings, keys, cookies, and `.env` values before pasting.
-> 5. Ask the agent to inspect the relevant application and Azure logs, explain the root cause, make the smallest safe fix, rerun the failed step, and run the journey verifier.
-> 6. Record the problem and resolution in `issues.md`.
->
-> Use this prompt:
->
-> ```text
-> The following command failed during <journey phase> on <OS and shell>:
->
-> <exact command>
->
-> Relevant error output:
->
-> <redacted error output>
->
-> Inspect the relevant application and Azure logs, explain the root cause,
-> make the smallest safe fix, rerun the failed step, and run the journey
-> verifier. Record the issue and resolution in issues.md. Do not print secrets.
-> ```
+AI-generated infrastructure isn't deterministic, so expect an occasional failure. Stay in the same Copilot session, remove passwords, tokens, keys, and connection strings from the output, and use this prompt:
+
+```text
+The following command failed during <journey phase> on <OS and shell>:
+
+<exact command>
+
+Relevant error output:
+
+<redacted error output>
+
+Inspect the relevant application and Azure logs, explain the root cause,
+make the smallest safe fix, rerun the failed step, and run the journey
+verifier. Record the issue and resolution in issues.md. Do not print secrets.
+```
+
+</details>
 
 ### Step 1: Setup
 
@@ -131,25 +118,10 @@ Run the following steps from the repository root. If you're in the parent direct
 cd agentic-journeys
 ```
 
-Configure `azd` to reuse the signed-in Azure CLI session:
-
-```text
-azd config set auth.useAzCliAuth true
-```
-
-The command must exit successfully.
-
 Start the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started):
 
 ```text
 copilot
-```
-
-If you haven't installed the Azure Skills plugin yet, do it now. This one-time setup adds deployment tools, Bicep schema lookups, and infrastructure generation; see the root [Quick Start](../../README.md#quick-start) for details.
-
-```
-> /plugin marketplace add microsoft/azure-skills
-> /plugin install azure@azure-skills
 ```
 
 Now select the deployment agent. Agents are specialized personas that know how to handle specific tasks:
@@ -162,10 +134,6 @@ Select **`oss-to-azure-deployer`** from the list. You're now in an interactive s
 
 ### Step 2: Deploy
 
-<p align="center">
-  <img src="./images/azure-deployment.webp" alt="Deploy Grafana to Azure" width="800" />
-</p>
-
 Give the agent one prompt that covers the location, secrets, and issue handling:
 
 ```
@@ -177,12 +145,11 @@ Give the agent one prompt that covers the location, secrets, and issue handling:
   resolution in issues.md. Do not print secrets.
 ```
 
-The agent handles the entire deployment:
+<p align="center">
+  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, runs azd up, and the verifier checks the result" width="800" />
+</p>
 
-1. Loads the `grafana-azure` skill (Grafana-specific health probes, ports, and environment variables) and the `container-apps-deployment` skill, then follows the Azure plugin pipeline: `azure-prepare` → `azure-validate` → `azure-deploy`
-2. Generates a lean Bicep (Azure's infrastructure-as-code language) structure in `infra-grafana/` with no PostgreSQL module needed (SQLite is the default)
-3. Updates `azure.yaml`, registers Azure providers, sets environment variables
-4. Runs `azd up`
+The agent loads the `grafana-azure` and `container-apps-deployment` skills, uses the Azure Skills plugin for current Bicep schemas, generates `infra-grafana/`, and runs `azd up`. There's no database module, because SQLite is the default.
 
 > ⏳ **While you wait:** This is the fastest deployment in the project because there is no database server to provision. Compare the [architecture diagram](#architecture) with the [n8n architecture](../n8n/README.md#architecture), then consider the persistence tradeoff created by embedded SQLite. You'll test that tradeoff in the [Assignment](#assignment). You can also inspect the resources as they appear by running `az resource list --resource-group rg-<env-name> --output table` in a separate terminal.
 
@@ -192,7 +159,11 @@ To explore the storage tradeoff, ask:
 > Should I use PostgreSQL instead of SQLite for Grafana?
 ```
 
-A useful answer should explain that SQLite is suitable for development and testing, but dashboards are lost when the container restarts. For production, mount Azure Files at `/var/lib/grafana` or switch to PostgreSQL.
+<p align="center">
+  <img src="./images/sqlite-vs-postgresql.webp" alt="SQLite or PostgreSQL: SQLite (the default) needs no extra resource and deploys fast, but data is lost on restart. PostgreSQL survives restarts and supports multiple replicas, at extra cost." width="700" />
+</p>
+
+A good answer matches this picture: SQLite suits development and testing, but dashboards disappear when the container restarts. For production, mount Azure Files at `/var/lib/grafana` or switch to PostgreSQL.
 
 ### Step 3: Verify
 
@@ -424,6 +395,8 @@ The command must return `false`. If cleanup fails or the resource group still ex
 ---
 
 ## What's Next
+
+**Take it home:** the same agent deploys other open-source apps. Ask `@oss-to-azure-deployer` *"How would I deploy Uptime Kuma to Azure?"* and compare its plan with this one.
 
 Explore the other journeys:
 

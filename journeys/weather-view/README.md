@@ -31,18 +31,12 @@ This journey supports Windows PowerShell, Command Prompt, Mac, and Linux.
 | [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) | Required for the documented CLI path | Run the coding agent and Azure Skills plugin | `copilot --version` |
 | Git | Required | Create the isolated application workspace and inspect changes | `git --version` |
 
-Run these read-only checks before Phase 1:
+**Before you start:**
 
-```text
-node --version
-az version
-az account show --output table
-azd version
-copilot --version
-git --version
-```
-
-Confirm that `az account show` identifies the subscription you intend to use, `azd` is version 1.28.0 or later, and Node.js is a currently supported LTS release. Stop and fix a failed prerequisite before asking GitHub Copilot to generate code. See the [cross-platform installation guide](../../docs/tool-installation.md) for Windows, Mac, and Linux installation options.
+1. Run each command in the Validation column, and install anything that fails. The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options.
+2. Confirm that `az account show --output table` shows the subscription you intend to use.
+3. Run `azd config set auth.useAzCliAuth true`, so `azd` reuses your Azure CLI sign-in.
+4. Inside `copilot`, install the Azure Skills plugin once: `/plugin marketplace add microsoft/azure-skills`, then `/plugin install azure@azure-skills`. Use only this marketplace and plugin name.
 
 > [!NOTE]
 > GitHub Copilot CLI is the documented and validated path. You can adapt the prompts for the GitHub Copilot app, an IDE agent, or another agentic coding tool. For another tool, run: **"Copy or adapt this repository's `.github/skills` into your supported skills or instructions location, preserving their behavior and reporting anything unsupported."**
@@ -126,36 +120,36 @@ Open the spec before you begin. GitHub Copilot will use its exact section names 
 
 ## The Journey
 
-WeatherView is built in three phases. You'll first create the product experience, then harden and test it, and finally generate Bicep and deploy it to Azure Static Web Apps.
+<p align="center">
+  <img src="./images/weather-view-at-a-glance.webp" alt="WeatherView at a glance: 1 read the plan, 2 build the shell, 3 add live weather, 4 test and verify, 5 deploy to Azure" width="800" />
+</p>
+
+WeatherView is built in three phases: create the product experience, test and harden it, then generate Bicep and deploy it to Azure Static Web Apps.
 
 **How this journey works:** Work incrementally. Ask GitHub Copilot for one bounded change, inspect the result against `PLAN.md`, run it yourself, and repair only observed gaps. The loop is: generate → inspect → test → refine.
 
 **What AI model should I choose?** Use a capable frontier model for the initial architecture, accessibility review, infrastructure generation, and difficult debugging. Smaller models are often sufficient for focused tests and narrow fixes. Switch when the model repeatedly misses requirements rather than endlessly expanding a prompt.
 
-> **💡 Track issues as you go.** Every generation prompt asks GitHub Copilot to record real problems and fixes in `issues.md` inside the isolated WeatherView workspace. Do not pre-populate the source journey with hypothetical failures.
+<details>
+<summary><strong>When something fails</strong></summary>
 
-> [!IMPORTANT]
-> **When something fails**
->
-> 1. Stay in the same GitHub Copilot session so it retains the journey context.
-> 2. Paste the exact command and relevant output. Do not paraphrase it.
-> 3. Include the operating system, shell, current phase, and last successful step.
-> 4. Remove tokens, cookies, subscription identifiers, and `.azure` values before pasting.
-> 5. Ask GitHub Copilot to explain the root cause, make the smallest safe fix, rerun the failed check, and record the resolution in `issues.md`.
->
-> ```text
-> The following command failed during <journey phase> on <OS and shell>:
->
-> <exact command>
->
-> Relevant error output:
->
-> <redacted error output>
->
-> Inspect the relevant application or Azure state, explain the root cause,
-> make the smallest safe fix, rerun the failed step, and run the applicable
-> verifier. Record the issue and resolution in issues.md. Do not print secrets.
-> ```
+AI code generation isn't deterministic, so expect an occasional failure. Stay in the same Copilot session, remove tokens, cookies, subscription IDs, and `.azure` values from the output, and use this prompt:
+
+```text
+The following command failed during <journey phase> on <OS and shell>:
+
+<exact command>
+
+Relevant error output:
+
+<redacted error output>
+
+Inspect the relevant application or Azure state, explain the root cause,
+make the smallest safe fix, rerun the failed step, and run the applicable
+verifier. Record the issue and resolution in issues.md. Do not print secrets.
+```
+
+</details>
 
 ### Phase 1: Build the Weather Experience
 
@@ -199,36 +193,15 @@ End that session, then change to the journey directory in the new workspace:
 cd ../weather-view-workspace/journeys/weather-view
 ```
 
-Configure `azd` to reuse the Azure CLI session:
-
-```text
-azd config set auth.useAzCliAuth true
-```
-
 Start a new GitHub Copilot CLI session from `journeys/weather-view`:
 
 ```text
 copilot
 ```
 
-#### Step 2: Install and confirm Azure Skills
+#### Step 2: Confirm Azure Skills
 
-The Azure Skills plugin is not a footnote in this journey. It gives GitHub Copilot current Bicep schemas, deployment planning, infrastructure validation, and Azure troubleshooting context that the base coding model may not have.
-
-If you completed the root [Quick Start](../../README.md#quick-start), the plugin persists and you can skip installation. Otherwise, run these canonical commands inside GitHub Copilot CLI:
-
-```
-> /plugin marketplace add microsoft/azure-skills
-```
-
-```
-> /plugin install azure@azure-skills
-```
-
-> [!IMPORTANT]
-> Use only `microsoft/azure-skills` and `azure@azure-skills`. Do not substitute an older or similarly named marketplace.
-
-Ask GitHub Copilot to confirm the plugin context before generating Azure files:
+The Azure Skills plugin gives GitHub Copilot current Bicep schemas, deployment planning, infrastructure validation, and Azure troubleshooting context that the base model may not have. You installed it in [Before you start](#prerequisites); confirm this session can use it:
 
 ```
 > Confirm whether the Azure Skills plugin is available in this session. List
@@ -309,6 +282,10 @@ Open the local URL in a browser, resize it to phone width, and use only the keyb
 8. Does a forecast date remain the same calendar day in `America/Phoenix`, or does midnight parsing shift it backward?
 
 Run the app and check the local acceptance criteria manually. Search for your city, change units, change themes, reload, then deny or block geolocation in browser permissions and reload again.
+
+<p align="center">
+  <img src="./images/normalization-boundary.webp" alt="The normalization boundary: the Open-Meteo response holds parallel arrays for time, weather code, max, and min. Validation requires five aligned values, then produces five day objects that render as five cards. Invalid data shows a safe error and keeps the last forecast." width="800" />
+</p>
 
 **💡 What you're learning:** External API code needs a normalization boundary. The rest of the UI should consume one stable model rather than know that Open-Meteo returns parallel arrays.
 
@@ -406,9 +383,7 @@ Use the Playwright network mock to return five dates but only four maximum tempe
 
 #### Step 1: Generate Bicep and azd configuration with Azure Skills
 
-Before submitting the generation prompt, confirm the `azure@azure-skills` plugin is active (you can run `/plugins ls` with Copilot CLI or check the plugins list in your environment). The agent should use Azure schema and deployment guidance rather than relying solely on remembered Static Web Apps properties.
-
-The prompt stays short on purpose: the complete deployment contract including Bicep scope and module choices, SKU, tags, outputs, the `dist` build flow, and the `staticwebapp.config.json` requirements, lives in the "Azure Deployment" section of `PLAN.md`.
+The prompt stays short on purpose. The full deployment contract (Bicep scope and modules, SKU, tags, outputs, the `dist` build, and `staticwebapp.config.json`) lives in the "Azure Deployment" section of `PLAN.md`, and the Azure Skills plugin supplies current schemas instead of remembered ones.
 
 ```
 > Read the "Azure Deployment" section in PLAN.md. Use the installed Azure
@@ -446,7 +421,7 @@ If the status is `NOT READY`, ask GitHub Copilot to fix only the failed checks, 
 
 #### Step 3: Let GitHub Copilot prepare the azd environment
 
-Use the agent for prerequisite preparation rather than copying values through a chain of manual `az` commands:
+Let the agent prepare the environment instead of copying values through a chain of `az` commands:
 
 ```
 > Prepare this WeatherView azd environment for deployment. Do not run azd up
@@ -482,7 +457,7 @@ Do not continue until infrastructure provisioning and the `web` service deployme
 
 > ⏳ **While you wait:** Open `infra/main.bicep` and trace the environment name from azd parameter to resource-group name, Static Web App name, service tag, and `WEB_URL` output. Ask GitHub Copilot: *"Explain how azd finds the Static Web App resource and deploys this project without a deployment token or GitHub Actions workflow."*
 
-If `azd up` fails, paste the exact error into the existing GitHub Copilot session and ask it to use Azure Skills to diagnose the current files and deployment state. Do not convert the journey into a long list of ad hoc Azure CLI repairs.
+If `azd up` fails, use the "When something fails" prompt in the same session, so the agent diagnoses the current files and deployment state with Azure Skills.
 
 #### Step 5: Verify the live deployment
 
@@ -498,7 +473,7 @@ It must print:
 PASS: WeatherView assets and five-day Open-Meteo contract verified
 ```
 
-The script reads `WEB_URL` through `azd`, verifies the main document and required modules from Azure Static Web Apps, checks important app-shell and security markers, calls Open-Meteo for Seattle, and fails if the forecast contract does not contain exactly five aligned days.
+It reads `WEB_URL` through `azd`, checks the deployed page, modules, and security markers, and fails unless Open-Meteo returns exactly five aligned days for Seattle.
 
 Now ask GitHub Copilot to create and run deployed browser acceptance before you rely on a screenshot:
 
@@ -535,8 +510,6 @@ Complete one human pass:
 4. Switch themes and reload.
 5. Navigate every control with the keyboard.
 6. In browser developer tools, confirm there are no console errors and forecast/geocoding requests go directly to Open-Meteo over HTTPS.
-
-The browser script was created before you ran it, and its screenshot is evidence of the same deployment the verifier tested.
 
 #### 🧪 Try it yourself: Add a compact forecast mode
 
@@ -718,6 +691,18 @@ From `journeys/weather-view` in the isolated workspace:
 Do not call the deployment complete from HTTP 200 alone.
 
 </details>
+
+---
+
+## What You Built
+
+| You did | You now know how to |
+| --- | --- |
+| Turned `PLAN.md` into small, reviewable prompts | Give an agent a contract instead of a wall of instructions |
+| Reviewed the shell, the API boundary, and the tests | Catch accessibility and resilience gaps in generated code |
+| Generated a verifier before running it | Make acceptance criteria executable |
+| Generated Bicep with Azure Skills and ran `azd up` | Deploy a static site with no backend, token, or pipeline |
+| Verified the live site and captured a screenshot | Prove a deployment works, not just that it returned HTTP 200 |
 
 ---
 
