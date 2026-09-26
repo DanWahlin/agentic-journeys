@@ -11,6 +11,7 @@ You'll build WeatherView from a shared spec using vanilla HTML, CSS, and JavaScr
 ## Learning Objectives
 
 - Turn a product plan into small, reviewable implementation prompts
+- Use Copilot CLI's everyday controls: plan mode, `@` file mentions, `/diff`, and `/rewind`
 - Build modular browser code around live Open-Meteo forecast and geocoding APIs
 - Review generated UI code for accessibility, resilience, and performance
 - Write tests that give the same result every run, so you verify the app works instead of trusting that it built
@@ -128,7 +129,9 @@ WeatherView is built in three phases: create the product experience, test and ha
 
 **How this journey works:** Work incrementally. Ask GitHub Copilot for one bounded change, inspect the result against `PLAN.md`, run it yourself, and repair only observed gaps. The loop is: generate → inspect → test → refine.
 
-**What AI model should I choose?** Use a capable frontier model for the initial architecture, accessibility review, infrastructure generation, and difficult debugging. Smaller models are often sufficient for focused tests and narrow fixes. Switch when the model repeatedly misses requirements rather than endlessly expanding a prompt.
+**What AI model should I choose?** Use a capable frontier model for the initial architecture, accessibility review, infrastructure generation, and difficult debugging. Smaller models are often sufficient for focused tests and narrow fixes. Switch with `/model` when the model repeatedly misses requirements rather than endlessly expanding a prompt, and check what you've used with `/usage`.
+
+**Keep the session lean.** Every prompt re-sends the conversation so far, so a long session gets more expensive with each step. `PLAN.md` carries the context that matters, so at the start of each phase run `/compact` to summarize the conversation, or `/new` to start fresh.
 
 <details>
 <summary><strong>When something fails</strong></summary>
@@ -159,43 +162,16 @@ verifier. Record the issue and resolution in issues.md. Do not print secrets.
 
 #### Step 1: Create an isolated workspace
 
-Keep this README open, but generate the application in a separate workspace so the source journeys repository stays clean.
-
-From the journeys repository root, start GitHub Copilot CLI:
+Build the app in its own workspace, so it becomes its own Git repository and this one stays untouched. Copying files needs no judgment, so a script does it. From the journeys repository root, run:
 
 ```text
-copilot
+node .github/scripts/create-workspace.mjs weather-view
 ```
 
-Run this prompt. If you want a different parent folder, change only the target path:
-
-```
-> Create a standalone WeatherView workspace in a sibling directory named
-  weather-view-workspace next to this repository. Stop and ask before changing
-  anything if that directory already exists and is not empty.
-  Preserve the existing folder structure by copying these directories into
-  the workspace:
-  - journeys/weather-view
-  - .github/agents
-  - .github/skills
-  - .github/scripts
-  - docs
-  Initialize a Git repository at the workspace root and add a root .gitignore
-  that excludes .env and .env.* while allowing .env.example, plus .azure/,
-  node_modules/, coverage/, test-results/, and playwright-report/.
-  Do not modify the source journeys repository. When finished, show the
-  workspace path and every copied top-level path.
-```
-
-End that session, then change to the journey directory in the new workspace:
+It copies the journey, agents, skills, scripts, and docs into `../weather-view-workspace`, adds a `.gitignore` that keeps secrets and generated files out, and commits everything on `main`. Then start Copilot in the new workspace:
 
 ```text
 cd ../weather-view-workspace/journeys/weather-view
-```
-
-Start a new GitHub Copilot CLI session from `journeys/weather-view`:
-
-```text
 copilot
 ```
 
@@ -211,9 +187,20 @@ The Azure Skills plugin gives GitHub Copilot current Bicep schemas, deployment p
   stop and tell me to install azure@azure-skills.
 ```
 
-#### Step 3: Scaffold the accessible app shell
+#### Step 3: Plan, then scaffold the accessible app shell
 
 > **Default stack:** vanilla HTML5 + CSS + modern JavaScript ES modules. Do not substitute a framework or UI library.
+
+Have Copilot plan before it writes anything. Press **Shift+Tab** until the mode indicator shows **plan**, then attach the spec with an `@` mention:
+
+```
+> @PLAN.md Plan how you'll build the WeatherView app shell described in
+  "Choose Your Stack," "Project Structure," "Product Experience," and
+  "Accessibility and Performance." List each file you'll create and what it
+  will contain. Don't write any code yet.
+```
+
+Read the plan. If it adds a framework, a backend, a build tool, or files `PLAN.md` doesn't ask for, say so now, while changing course costs one sentence. When it looks right, press **Shift+Tab** to leave plan mode and build it:
 
 ```
 > Read PLAN.md, especially "Choose Your Stack," "Project Structure," "Product
@@ -246,6 +233,8 @@ The Azure Skills plugin gives GitHub Copilot current Bicep schemas, deployment p
 Start the local app using the generated command. The exact command belongs in the generated `package.json` and project README; do not invent a second server path.
 
 Open the local URL in a browser, resize it to phone width, and use only the keyboard for one pass through the controls.
+
+Then run `/diff` in Copilot to see every file this step created or changed. Get in the habit: after each build step, `/diff` shows you exactly what the agent did before you build on it.
 
 **💡 What you're learning:** Generating the shell separately keeps visual and accessibility decisions reviewable. If API code and UI arrive in one large change, it is harder to tell whether failures come from the data contract, rendering, or layout.
 
@@ -288,6 +277,22 @@ Run the app and check the local acceptance criteria manually. Search for your ci
 </p>
 
 **💡 What you're learning:** External API code needs a normalization boundary. The rest of the UI should consume one stable model rather than know that Open-Meteo returns parallel arrays.
+
+#### 🧪 Try it yourself: Undo a change with `/rewind`
+
+Agents make changes you won't always want to keep. Ask for one on purpose:
+
+```
+> Replace the five forecast cards with a single horizontal carousel.
+```
+
+Run `/diff` to see what it touched. Then undo it:
+
+1. Run `/rewind` and pick that turn.
+2. Choose **Conversation + files**. (The default, **Conversation only**, leaves your files as they are.)
+3. Review the list of files it will restore, and press **Enter**.
+
+Copilot reports that it rewound the conversation and restored the files. Reload the page and confirm the five cards are back. Knowing you can undo a turn makes it cheap to try an idea and throw it away.
 
 ---
 
@@ -699,6 +704,7 @@ Do not call the deployment complete from HTTP 200 alone.
 | You did | You now know how to |
 | --- | --- |
 | Turned `PLAN.md` into small, reviewable prompts | Give an agent a contract instead of a wall of instructions |
+| Planned before building, checked `/diff`, and undid a turn with `/rewind` | Steer an agent step by step, and back out safely |
 | Reviewed the shell, the API boundary, and the tests | Catch accessibility and resilience gaps in generated code |
 | Generated a verifier before running it | Make acceptance criteria executable |
 | Generated Bicep with Azure Skills and ran `azd up` | Deploy a static site with no backend, token, or pipeline |
