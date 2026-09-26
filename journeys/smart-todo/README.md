@@ -94,9 +94,9 @@ SmartTodo is defined by a small set of linked plans. The agent reads them, and e
 
 Every phase runs the same loop:
 
-```text
-issue ─► grill the plan ─► red: failing tests ─► green: code ─► gates ─► review ─► merge
-```
+<p align="center">
+  <img src="./images/journey-loop.webp" alt="One loop, every phase: Issue, Grill the Plan, Red: Failing Tests, Green: Code, Gates, Review, Merge, and back to the next issue. The tests stay frozen between red and green." width="800" />
+</p>
 
 | You | The agent |
 | --- | --- |
@@ -128,9 +128,9 @@ Prompts that say "Use the tdd-builder agent" or "Use the grill-plan skill" load 
 
 **Phases 1 to 3 are one stack of pull requests.** They depend on each other, so they ship as a [GitHub stack](./PLAN.md#stacked-pull-requests):
 
-```text
-main ← phase-1-api ← phase-2-ios ← phase-3-azure
-```
+<p align="center">
+  <img src="./images/stacked-prs.webp" alt="One stack, one merge: Phase 1: API, Phase 2: iOS app, and Phase 3: Azure are stacked pull requests on top of main. One gh stack merge lands them as three commits on main." width="700" />
+</p>
 
 Each pull request shows only its own phase's changes, and you can start the next phase while the last one is in review. `gh stack` creates the layers, opens their pull requests, and merges them. Phase 4 uses ordinary pull requests.
 
@@ -218,7 +218,7 @@ Open the issues on GitHub. Note the numbers for Phase 1, 2, and 3. The prompts b
 ## Phase 1: Build the API Test-First
 
 <p align="center">
-  <img src="./images/phase1-api.webp" alt="Phase 1: Building the API" width="800" />
+  <img src="./images/phase1-api.webp" alt="Test-first API: PLAN.md becomes failing tests locked at the phase1-red tag, then code that turns them green, then gates: npm run check and git diff phase1-red" width="800" />
 </p>
 
 You'll build the Azure Functions API with Node.js and TypeScript. Locally, it uses an in-memory store and a fake AI generator, so this phase needs no database, no AI key, and no Azure resources.
@@ -566,13 +566,11 @@ Get the URL with `azd env get-value API_URL`, set `Config.apiBaseURL` to it, and
 
 **💡 What you're learning:** Knowledge moves up a ladder as it proves itself:
 
-| Form | Cost per use | Same result every time? |
-| --- | --- | --- |
-| A prompt | AI credits and your attention | No |
-| A skill (`SKILL.md`) | AI credits | More often, because the agent starts with the lessons |
-| A script (`scaffold-infra.mjs` + `check-infra.mjs`) | Free, in seconds | Yes |
+<p align="center">
+  <img src="./images/knowledge-ladder.webp" alt="Prompt, Skill, Script: a prompt discovers how to do something and costs AI credits and attention; a skill (SKILL.md) repeats it well and still costs AI credits; a script (scaffold-infra.mjs and check-infra.mjs) is free and deterministic" width="650" />
+</p>
 
-Use a prompt to discover how to do something, a skill to repeat it well, and a script once the result stops changing.
+Use a prompt to discover how to do something. It costs AI credits and your attention, and the result varies. A skill (`SKILL.md`) repeats it well, because the agent starts with the lessons. A script (`scaffold-infra.mjs` and `check-infra.mjs`) is free, runs in seconds, and gives the same result every time, so use one once the result stops changing.
 
 ### Step 7: Ship 🐙
 
@@ -597,6 +595,10 @@ gh stack sync --prune
 ---
 
 ## Phase 4: Build the Factory
+
+<p align="center">
+  <img src="./images/phase4-factory.webp" alt="The factory: an issue goes to the Copilot cloud agent, which opens a draft pull request and runs CI and review on its own. You verify on Azure and decide whether to merge." width="800" />
+</p>
 
 You ran the same loop three times by hand: issue, interview, red, green, gates, review, merge. Now you'll write that loop down so the next feature runs through it without you driving every step. Phase 4 uses ordinary pull requests, so start from `main` once all three stack layers have merged:
 
