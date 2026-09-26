@@ -57,6 +57,17 @@ gh --version
 gh auth status
 ```
 
+### GitHub CLI `gh stack` extension (SmartTodo)
+
+SmartTodo ships Phases 1 to 3 as [stacked pull requests](https://github.com/github/gh-stack). The extension installs the same way on every OS, after the GitHub CLI:
+
+```text
+gh extension install github/gh-stack
+gh stack --version
+```
+
+Stacked pull requests are in public preview. If `gh stack submit` reports that stacks aren't enabled for your repository, the SmartTodo README's Troubleshooting section describes the fallback.
+
 ### Docker (optional local container work)
 
 - Windows: [Docker Desktop for Windows](https://docs.docker.com/desktop/setup/install/windows-install/)
