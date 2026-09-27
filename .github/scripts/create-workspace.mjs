@@ -72,6 +72,7 @@ test-results/
 playwright-report/
 artifacts/
 *.db
+*.tsbuildinfo
 `);
 
 git(['init', '--quiet'], workspace);

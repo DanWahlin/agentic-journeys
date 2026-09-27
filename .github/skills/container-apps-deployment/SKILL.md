@@ -46,6 +46,8 @@ services:
       remoteBuild: true
 ```
 
+`docker.path` and `docker.context` are relative to the service's `project` folder. Either omit `project` and use repository-relative paths, as above, or set `project: api` with `path: Dockerfile` and `context: .`. Mixing the two doubles the folder, and `azd up` fails at publish with `lstat .../api/api: no such file or directory`.
+
 Declare each service whose image azd owns this way. AIMarket declares only `api`; Bicep creates its web Container App and the project postdeploy hook owns the storefront ACR build and update. **Without `language`:** `azd up` fails with "must specify language or image". **Without `remoteBuild: true`:** `azd` can require a local Docker daemon.
 
 ### Cross-platform hooks
@@ -89,7 +91,7 @@ The JavaScript hook must:
 1. Resolve the application root from CommonJS `__dirname` rather than assuming the current working directory.
 2. Read `API_URL`, `AZURE_CONTAINER_REGISTRY_ENDPOINT`, and `RESOURCE_GROUP_NAME` with `azd env get-value`.
 3. Find the web Container App by its `azd-service-name=web` tag.
-4. Run `az acr build` with `--platform linux/amd64`, a unique image tag, and `--build-arg VITE_API_URL=<API_URL>/api`.
+4. Run `az acr build` with `--platform linux/amd64`, a unique image tag, and `--build-arg VITE_API_URL=<API_URL>/api`. `--file` is resolved from the current directory, not from the build context, so pass the Dockerfile's full path (`--file client/Dockerfile` with the `client` context, or an absolute path). `--file Dockerfile` fails with `Unable to find 'Dockerfile'`.
 5. Update the web Container App to use the cloud-built image.
 6. Wait until the expected revision is healthy and provisioned, then verify the storefront can load products. When `minReplicas` is `0`, accept both `Running` and `ScaledToZero`; requiring only `Running` causes a false timeout before the verification request can activate the revision.
 

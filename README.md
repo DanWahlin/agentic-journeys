@@ -148,6 +148,7 @@ Each journey is self-contained — jump into whichever one fits what you want to
 | Azure Functions | | | | | | ✅ |
 | Microsoft Foundry / LLMs | | | | | ✅ | ✅ |
 | Azure AI Search | | | | | ✅ | |
+| **Agentic practice you'll add** | Plan mode, `@` mentions, `/diff`, `/rewind` | Plan and cost first, preview, then deploy; operate the app through its API | Work in parallel while `azd up` runs; an agent-built workflow | Cost review before a big deploy; `/fork` a what-if | Hand a feature to the cloud agent while you build another; Copilot code review | Plan interviews, red/green TDD agents, stacked PRs, a cloud-agent factory |
 
 ---
 

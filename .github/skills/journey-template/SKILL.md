@@ -14,7 +14,7 @@ Generate a complete agentic journey from a user's app idea. A journey is a hands
 
 **Every journey README must include:**
 - No journey-sequence or learning-path numbering such as "Journey 2 of 5" — journeys are self-contained. Numbered phases and steps inside one journey are encouraged when they clarify the flow.
-- Honest first-run time + cost **if left running** + same-day teardown
+- Cost **if left running** + same-day teardown. No time estimates; a journey-at-a-glance image shows the steps only
 - **Done when** checklist with concrete manual verification steps
 - Full-stack: **one-line default stack** at the first generate prompt (not a defaults table); put stack details in PLAN.md
 - Plugin commands: only `microsoft/azure-skills` / `azure@azure-skills`
@@ -142,50 +142,31 @@ Every journey README MUST follow this exact structure. Reference `journeys/aimar
 
 ## Deploy with the Agent / The Journey
 
+<Put setup in the Prerequisites "Before you start" list, not here: validation commands, the subscription check, `azd config set auth.useAzCliAuth true`, and the Azure Skills plugin (`/plugin marketplace add microsoft/azure-skills`, then `/plugin install azure@azure-skills`; canonical names only). Collapse "When something fails" into a `<details>` block with the exact-error recovery prompt.>
+
 ### Step 1: Setup
 
-<Plugin setup — use these EXACT commands:>
+<For OSS journeys: `cd` to the repository root, start `copilot`, and select `oss-to-azure-deployer` with `/agent`. For build journeys: run `node .github/scripts/create-workspace.mjs <journey>` (add the journey to its list), then `cd` into the workspace and start `copilot`. Scripts, not prompts, for anything that needs no judgment.>
 
-```bash
-copilot
-```
+### Step 2: Plan the deployment
 
-Once inside the interactive session, add the marketplace (first time only):
+<A read-only prompt: list each Azure resource, its SKU, and the estimated monthly cost if left running. "Don't create files or Azure resources yet." Pin every choice the journey depends on (for example, storage that must stay container-local) so the agent can't optimize it away.>
 
-```
-> /plugin marketplace add microsoft/azure-skills
-```
+### Step 3: Generate and preview
 
-Then install the plugin:
+<The agent generates the infrastructure, prepares the azd environment, and runs `azd provision --preview`. "Don't run azd up." Use one shared "How the deploy agent works" image and a two-line caption instead of listing what the agent does.>
 
-```
-> /plugin install azure@azure-skills
-```
+### Step 4: Deploy
 
-> **Already installed?** If you completed the root [Quick Start](../../../README.md#quick-start) (or already installed `azure@azure-skills`), skip the install commands — the plugin persists across sessions.
-> **Canonical only:** `microsoft/azure-skills` — never document alternate marketplace names.
+<The learner runs `azd up`. Give the wait a job: a parallel prompt ("My azd up is running in another terminal, so don't run azd or any deployment command"), a `/fork` what-if, or a concept image to study.>
 
-After installation, include a prompt that asks the agent to confirm which Azure Skills and MCP tools are available in the current session. Stop before Azure-file generation if the plugin is unavailable.
+### Step 5: Verify
 
-<For OSS journeys, select the agent:>
+<The checked-in verifier, then a human check.>
 
-```
-> /agent
-```
+### Step 6: Use it
 
-Select **`oss-to-azure-deployer`** from the list.
-
-### Step 2: Deploy
-
-<p align="center">
-  <img src="./images/azure-deployment.jpg" alt="Deploy to Azure" width="800" />
-</p>
-
-<Step-by-step instructions>
-
-### Step 3: Verify
-
-<Verification steps>
+<A real payoff through the app's own API, with a script the agent writes and the learner runs: a dashboard, a workflow, a query. Not just HTTP 200.>
 
 ---
 
@@ -284,7 +265,7 @@ Require successful exit, then verify the exact resource group no longer exists w
 
 **OSS deployment journeys** use the base template as-is. Section order:
 
-`Deploy with the Agent` (3 steps) → `Configuration Reference` → `Cost Breakdown` → `Troubleshooting` → `Verification Checklist` → `Cleanup` → `Key Learnings` → `Assignment` → `What's Next` → `Resources`
+`Deploy with the Agent` (6 steps: setup, plan, generate and preview, deploy, verify, use it) → `Configuration Reference` → `Cost Breakdown` → `Troubleshooting` → `Verification Checklist` → `Cleanup` → `Key Learnings` → `Assignment` → `What's Next` → `Resources`
 
 **Full-stack journeys** replace several sections:
 

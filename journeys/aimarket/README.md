@@ -162,7 +162,9 @@ Read the [`PLAN.md` overview](./PLAN.md) before you start to understand the targ
 
 **How this journey works:** You won't paste one giant prompt and hope for a finished app. Ask GitHub Copilot for one piece, inspect it, test it, fix what needs attention, and continue: generate → inspect → test → refine. Each prompt names the plan section it needs.
 
-**Which model?** Use a frontier model for architecture, changes that span several files, and hard debugging. Smaller models are often enough for focused code, tests, and clearly identified fixes. If a smaller model keeps missing requirements, switch.
+**Which model?** Use a frontier model for architecture, changes that span several files, and hard debugging. Smaller models are often enough for focused code, tests, and clearly identified fixes. If a smaller model keeps missing requirements, switch with `/model`.
+
+**Keep the session lean.** Every prompt re-sends the conversation so far, so a long session gets more expensive with each step. The plans carry the context that matters, so at the start of each phase run `/compact` to summarize the conversation, or `/new` to start fresh. Check what you've used with `/usage`.
 
 <details>
 <summary><strong>When something fails</strong></summary>
@@ -195,44 +197,16 @@ You'll build the API in stages, not all at once. Each step teaches a different a
 
 #### Step 1: Set up the project
 
-Keep this README open, but generate the application in a separate workspace so the journeys repository stays clean and the application can become its own GitHub repository.
-
-From the journeys repository root, start GitHub Copilot CLI:
+Build the app in its own workspace, so it becomes its own GitHub repository and this one stays untouched. Copying files needs no judgment, so a script does it. From the journeys repository root, run:
 
 ```text
-copilot
+node .github/scripts/create-workspace.mjs aimarket
 ```
 
-Then run the following prompt. If you have a specific folder where you'd like to create the `aimarket-workspace`, adjust the prompt accordingly.
-
-```
-> Create a standalone AIMarket workspace in a sibling directory named
-  aimarket-workspace next to this repository. Stop and ask before changing
-  anything if that directory already exists and is not empty.
-  Preserve the existing folder structure by copying these directories into
-  the workspace:
-  - journeys/aimarket
-  - .github/agents
-  - .github/skills
-  - .github/scripts
-  - docs
-  Initialize a Git repository at the workspace root and add a root .gitignore that
-  excludes secrets and generated files, including .env and .env.* while
-  allowing .env.example, plus .azure/, aimarket.db, node_modules/, dist/,
-  build/, coverage/, playwright-report/, and test-results/.
-  Do not modify the source journeys repository. When finished, show the
-  workspace path and the files copied.
-```
-
-End that Copilot session, then change to the new workspace:
+It copies the journey, agents, skills, scripts, and docs into `../aimarket-workspace`, adds a `.gitignore` that keeps secrets and generated files (including `aimarket.db`) out, and commits everything on `main`. Then start Copilot in the new workspace:
 
 ```text
 cd ../aimarket-workspace/journeys/aimarket
-```
-
-Start a new [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) session or your chosen agentic coding tool from the `journeys/aimarket` directory.
-
-```text
 copilot
 ```
 
@@ -535,11 +509,96 @@ Continue working from `journeys/aimarket` for the rest of the journey.
   <img src="./images/ai-search-and-chat.webp" alt="Phase 3: AI Features" width="800" />
 </p>
 
-This phase has two goals: integrate Azure AI services and delegate a well-scoped feature to the Copilot cloud agent.
+This phase adds two AI features at the same time: you hand the shopping assistant to the Copilot cloud agent, then build semantic search yourself while it works.
 
-#### Step 1: Add semantic product search
+#### Step 1: Hand the shopping assistant to the cloud agent
 
-This one you'll do interactively so you can see how search integration works.
+<p align="center">
+  <img src="./images/grounded-assistant.webp" alt="A grounded shopping assistant: a question such as What laptops do you have goes to POST /api/chat, which loads the active products into the system prompt and sends it to gpt-5-mini on Microsoft Foundry. The answer recommends UltraBook Pro 15 and mentions only real products." width="800" />
+</p>
+
+The assistant is well scoped (one endpoint and one component) and fully specified, which makes it a good candidate for handing to the cloud agent. Delegation is optional, so pick the way that suits you:
+
+<p align="center">
+  <img src="./images/build-options.webp" alt="Three ways to build the assistant: Option A, build it yourself in your current session; Option B, /delegate to hand off from the CLI; Option C, assign an issue to the Copilot cloud agent. All three end with you reviewing and merging." width="700" />
+</p>
+
+📖 **Spec:** [Shopping Assistant](./PLAN-phase3-ai.md#shopping-assistant), [Shopping Assistant Environment Variables](./PLAN-phase3-ai.md#shopping-assistant-environment-variables), [ChatWidget: Shared Layout](./PLAN-phase2-storefront.md#chatwidget-shared-layout), and [ChatWidget: AI Integration](./PLAN-phase2-storefront.md#chatwidget-ai-integration)
+
+**Option A: Build it yourself.** Without the cloud agent, do [Step 2](#step-2-build-semantic-search-while-the-agent-works) first, then run this prompt in your current session and skip Step 3:
+
+```
+> Create the AI shopping assistant for AIMarket. Read the
+  "Shopping Assistant" section in PLAN-phase3-ai.md and implement its
+  POST /api/chat requirements using the Microsoft Foundry SDK for my language.
+  Read the "ChatWidget: Shared Layout" and "ChatWidget: AI Integration"
+  sections in PLAN-phase2-storefront.md, and the "Shopping Assistant
+  Environment Variables" section in PLAN-phase3-ai.md. Implement their
+  requirements. Verify the implementation against all referenced plan
+  requirements.
+```
+
+**Option B: Delegate from your GitHub Copilot session**
+
+`/delegate` sends this task to the Copilot cloud agent, which implements it on GitHub and opens a pull request while you build semantic search in Step 2.
+
+```
+> /delegate Create the AI shopping assistant for AIMarket. Read
+  journeys/aimarket/PLAN.md, PLAN-phase2-storefront.md, and PLAN-phase3-ai.md
+  in the pushed repository. Implement the requirements
+  in "Shopping Assistant," including POST /api/chat. Implement the frontend
+  requirements in "ChatWidget: Shared Layout" and
+  "ChatWidget: AI Integration." Follow
+  "Shopping Assistant Environment Variables" for local and deployed
+  configuration. Verify the implementation against all referenced plan
+  requirements.
+```
+
+**Option C: Create an issue and assign GitHub Copilot cloud agent**
+
+Create a file named `issue-body.md` with this content:
+
+```markdown
+## What
+Add the AI shopping assistant to AIMarket.
+
+## Spec
+Read `journeys/aimarket/PLAN.md`, `PLAN-phase2-storefront.md`, and
+`PLAN-phase3-ai.md` in the pushed repository. Implement:
+1. **POST /api/chat** endpoint (see 'Shopping Assistant')
+   - Uses the Microsoft Foundry SDK for this project's language
+   - Fetches all active products and injects them into the system prompt
+   - Accepts a messages array for conversation history
+   - Returns the assistant's response
+2. **ChatWidget** React component (see 'ChatWidget: Shared Layout' and
+   'ChatWidget: AI Integration')
+   - Floating button bottom-right, expands to chat panel
+   - Message list + text input
+   - Sends full history with each request
+
+## Acceptance Criteria
+- POST /api/chat with 'What laptops do you have?' mentions UltraBook Pro 15
+- POST /api/chat can compare UltraBook Pro 15 with another catalog product without returning empty content or HTTP 500
+- Assistant does not invent products outside the catalog
+- Multi-turn conversation works (follow-up questions)
+- ChatWidget opens, sends messages, displays responses
+- If `AZURE_OPENAI_ENDPOINT` is missing, endpoint returns 503
+- If Foundry returns no usable content, endpoint returns 502 with `AI_RESPONSE_ERROR`
+```
+
+Create the issue with one shell-neutral command:
+
+```text
+gh issue create --title "Add AI shopping assistant (chat endpoint + ChatWidget)" --body-file issue-body.md
+```
+
+Then assign it to the GitHub Copilot cloud agent. Navigate to the issue on GitHub and click **"Assign to Copilot"**.
+
+Don't wait for the agent. Continue with Step 2 while it works.
+
+#### Step 2: Build semantic search while the agent works
+
+While the cloud agent works on the assistant, build search yourself, interactively, so you see how the integration works.
 
 📖 **Spec:** [Semantic Product Search](./PLAN-phase3-ai.md#semantic-product-search), [Semantic Search Environment Variables](./PLAN-phase3-ai.md#semantic-search-environment-variables), and [SearchBar: AI Search Integration](./PLAN-phase2-storefront.md#searchbar-ai-search-integration)
 
@@ -611,94 +670,31 @@ The local fallback should return **UltraBook Pro 15** for `"laptop"`. After Azur
 
 **💡 What you're learning:** The same search endpoint can use SQLite fallback locally and Azure AI Search after deployment. Azure AI Search handles indexing and semantic reranking, while the API combines ranked search results with the full product records stored in the database.
 
-#### Step 2: Add the shopping assistant
+#### Step 3: Review the agent's pull request
 
-<p align="center">
-  <img src="./images/grounded-assistant.webp" alt="A grounded shopping assistant: a question such as What laptops do you have goes to POST /api/chat, which loads the active products into the system prompt and sends it to gpt-5-mini on Microsoft Foundry. The answer recommends UltraBook Pro 15 and mentions only real products." width="800" />
-</p>
-
-The assistant is well scoped (one endpoint and one component) and fully specified, which makes it a good candidate for handing to the cloud agent. Delegation is optional, so pick the way that suits you:
-
-<p align="center">
-  <img src="./images/build-options.webp" alt="Three ways to build the assistant: Option A, build it yourself in your current session; Option B, /delegate to hand off from the CLI; Option C, assign an issue to the Copilot cloud agent. All three end with you reviewing and merging." width="700" />
-</p>
-
-📖 **Spec:** [Shopping Assistant](./PLAN-phase3-ai.md#shopping-assistant), [Shopping Assistant Environment Variables](./PLAN-phase3-ai.md#shopping-assistant-environment-variables), [ChatWidget: Shared Layout](./PLAN-phase2-storefront.md#chatwidget-shared-layout), and [ChatWidget: AI Integration](./PLAN-phase2-storefront.md#chatwidget-ai-integration)
-
-**Option A: Continue in your current session**
-
-```
-> Create the AI shopping assistant for AIMarket. Read the
-  "Shopping Assistant" section in PLAN-phase3-ai.md and implement its
-  POST /api/chat requirements using the Microsoft Foundry SDK for my language.
-  Read the "ChatWidget: Shared Layout" and "ChatWidget: AI Integration"
-  sections in PLAN-phase2-storefront.md, and the "Shopping Assistant
-  Environment Variables" section in PLAN-phase3-ai.md. Implement their
-  requirements. Verify the implementation against all referenced plan
-  requirements.
-```
-
-**Option B: Delegate from your GitHub Copilot session**
-
-If you have access to GitHub cloud agent, you can delegate asynchronously and have the cloud agent implement the shopping assistant while you take a break or work on another task. The agent will open a pull request when it's done, and you can review it like any other PR.
-
-```
-> /delegate Create the AI shopping assistant for AIMarket. Read
-  journeys/aimarket/PLAN.md, PLAN-phase2-storefront.md, and PLAN-phase3-ai.md
-  in the pushed repository. Implement the requirements
-  in "Shopping Assistant," including POST /api/chat. Implement the frontend
-  requirements in "ChatWidget: Shared Layout" and
-  "ChatWidget: AI Integration." Follow
-  "Shopping Assistant Environment Variables" for local and deployed
-  configuration. Verify the implementation against all referenced plan
-  requirements.
-```
-
-**Option C: Create an issue and assign GitHub Copilot cloud agent**
-
-Create a file named `issue-body.md` with this content:
-
-```markdown
-## What
-Add the AI shopping assistant to AIMarket.
-
-## Spec
-Read `journeys/aimarket/PLAN.md`, `PLAN-phase2-storefront.md`, and
-`PLAN-phase3-ai.md` in the pushed repository. Implement:
-1. **POST /api/chat** endpoint (see 'Shopping Assistant')
-   - Uses the Microsoft Foundry SDK for this project's language
-   - Fetches all active products and injects them into the system prompt
-   - Accepts a messages array for conversation history
-   - Returns the assistant's response
-2. **ChatWidget** React component (see 'ChatWidget: Shared Layout' and
-   'ChatWidget: AI Integration')
-   - Floating button bottom-right, expands to chat panel
-   - Message list + text input
-   - Sends full history with each request
-
-## Acceptance Criteria
-- POST /api/chat with 'What laptops do you have?' mentions UltraBook Pro 15
-- POST /api/chat can compare UltraBook Pro 15 with another catalog product without returning empty content or HTTP 500
-- Assistant does not invent products outside the catalog
-- Multi-turn conversation works (follow-up questions)
-- ChatWidget opens, sends messages, displays responses
-- If `AZURE_OPENAI_ENDPOINT` is missing, endpoint returns 503
-- If Foundry returns no usable content, endpoint returns 502 with `AI_RESPONSE_ERROR`
-```
-
-Create the issue with one shell-neutral command:
+The agent opens a **draft** pull request and keeps pushing to it. When its timeline shows that Copilot finished, mark it ready for review (Copilot code review skips drafts):
 
 ```text
-gh issue create --title "Add AI shopping assistant (chat endpoint + ChatWidget)" --body-file issue-body.md
+gh pr ready <PR_NUMBER>
 ```
 
-Then assign it to the GitHub Copilot cloud agent. Navigate to the issue on GitHub and click **"Assign to Copilot"**.
+Commit your search work, so reviewing the pull request doesn't disturb it:
 
-While the cloud agent works, take a break or read ahead to Phase 4. Don't deploy yet; the chat endpoint is part of the live acceptance criteria. When the agent opens a PR:
+```text
+git add --all
+git commit -m "Add semantic product search"
+```
+
+Ask Copilot code review for a second opinion. Its comments appear on the pull request within a few minutes:
+
+```text
+gh pr edit <PR_NUMBER> --add-reviewer @copilot
+```
+
+Then check out the pull request and test the chat endpoint and widget locally:
 
 ```text
 gh pr checkout <PR_NUMBER>
-# start both API and frontend, then test the chat endpoint and widget locally
 ```
 
 **🔍 Review the PR like you would any code review:**
@@ -707,6 +703,7 @@ gh pr checkout <PR_NUMBER>
 - Does the code avoid setting a custom temperature? (Both supported models are in the gpt-5 family and reject non-default temperature values.)
 - Does it use `minimal` reasoning effort and allow at least 2,000 completion/output tokens? (GPT-5 counts hidden reasoning against this limit.)
 - Does the ChatWidget send the full message history, or just the latest message?
+- What did Copilot code review flag? Triage each comment: fix it with an `@copilot` comment, or reply with why it doesn't apply.
 - What happens when `AZURE_OPENAI_ENDPOINT` isn't set? (Should return 503, not crash)
 - What happens when Foundry returns empty content? (Should return 502 with `AI_RESPONSE_ERROR`, not a generic 500)
 
@@ -716,19 +713,29 @@ If something's off, comment on the PR and let the agent fix it. Then merge:
 gh pr merge <PR_NUMBER>
 ```
 
+Return to `main` and bring in the merged assistant alongside your search work:
+
+```text
+git switch main
+git pull --rebase
+```
+
+Both features register API routes, so Git may report a conflict. If it does, ask Copilot: *"Resolve the rebase conflicts, keeping both the search and chat features, then run the API build and continue the rebase."*
+
 > **If the agent's PR has an issue:** After 2 rounds of feedback, close the PR and implement it yourself interactively using [Shopping Assistant](./PLAN-phase3-ai.md#shopping-assistant), [Shopping Assistant Environment Variables](./PLAN-phase3-ai.md#shopping-assistant-environment-variables), [ChatWidget: Shared Layout](./PLAN-phase2-storefront.md#chatwidget-shared-layout), and [ChatWidget: AI Integration](./PLAN-phase2-storefront.md#chatwidget-ai-integration). Not every task is a good fit for delegation, and that's a lesson too.
 
 **💡 What you're learning:** Cloud-agent work starts with a well-scoped issue and ends with your review. Self-contained tasks work best because the agent can read the spec and prove its work against testable acceptance criteria. Use interactive prompting when you need to steer each decision; delegate when the boundaries are already clear.
 
-#### Step 3: Review the completed application
+#### Step 4: Review the completed application
 
-Before generating deployment infrastructure, review the complete AIMarket implementation. If you delegated the shopping assistant, review the PR and merge it (you can ask GitHub Copilot to review a PR), then pull the latest changes to your local machine.
+With both features on `main`, review the whole application once before you generate deployment infrastructure.
 
 📖 **Check against:** [`PLAN.md` overview](./PLAN.md), [Phase 1 API plan](./PLAN-phase1-api.md), [Phase 2 Storefront plan](./PLAN-phase2-storefront.md), [Phase 3 AI plan](./PLAN-phase3-ai.md), and [Phase 4 Azure plan](./PLAN-phase4-azure.md)
 
 ```text
 > /review Review the completed AIMarket implementation against PLAN.md and all
-  four PLAN-phase*.md files.
+  four PLAN-phase*.md files. The Phase 4 infrastructure comes next, so for
+  Phase 4 check only that the app is ready for it.
   Identify missing or incorrectly implemented requirements and correctness,
   security, or reliability issues.
 ```
@@ -789,6 +796,8 @@ After generation completes, run this read-only pre-deployment review.
   3. Every blocking issue and the smallest exact fix
   Do not report READY while any required check is unresolved.
 ```
+
+If the status is `NOT READY`, ask Copilot to fix only the failed checks, then rerun the same read-only review.
 
 **💡 What you're learning:** Small deployment details fail in different ways. A missing service tag stops `azd` from finding the API, an incomplete `.dockerignore` overwhelms the build, and Vite needs `VITE_API_URL` at build time even though the API URL only exists after provisioning, which is why a postdeploy hook rebuilds the storefront. Record each new lesson in the plan or a skill, not in a longer prompt.
 
