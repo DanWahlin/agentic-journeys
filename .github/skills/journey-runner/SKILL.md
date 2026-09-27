@@ -134,13 +134,34 @@ Before starting a local server, test whether its preferred port is available. Se
 
 Copilot CLI accepts prompt text with `-p`; it does not accept a `--prompt-file` CLI option. Do not launch background jobs with an unverified flag.
 
-Write each prompt to a UTF-8 file, then use the cross-platform helper:
+Extract the README's prompts word for word instead of retyping them:
 
 ```text
-node scripts/run-copilot-prompt.mjs --prompt-file <prompt-path> --cwd <workspace> --allow-dir <repository-root> --allow-all-tools --allow-all-urls
+node scripts/extract-prompts.mjs --readme <journey>/README.md --out <run-dir>/prompts
+```
+
+It writes `NN.txt` per prompt and an `index.json` with each prompt's heading, slash command, and placeholders. Fill placeholders (such as `<pr-number>`) in a copy, never in the README. Prompts that start with an interactive-only slash command (`/rewind`, `/fork`, `/delegate`, `/diff`) can't run under `copilot -p`; validate them as Step 4 describes.
+
+Run each prompt with the cross-platform helper:
+
+```text
+node scripts/run-copilot-prompt.mjs --prompt-file <run-dir>/prompts/01.txt --cwd <workspace> --allow-dir <repository-root> --allow-all-tools --allow-all-urls --label "01 plan" --log <run-dir>/logs/01.log --record <run-dir>/timing.jsonl --session-out <run-dir>/session.txt
 ```
 
 The helper reads the file and calls `copilot -p <prompt>` with `shell: false`, avoiding Bash and PowerShell quoting differences. Non-interactive runs must explicitly opt into the tools and URLs required by the journey, and must add the repository root when the workspace is a child directory; otherwise Copilot cannot request approval and silently loses access to commands or parent skills.
+
+- `--agent <name>` selects a custom agent, such as `oss-to-azure-deployer`.
+- `--mode plan` starts in plan mode; resume with `--mode interactive` to act on the plan.
+- `--session-out <file>` saves the session ID, and `--resume-from <file>` continues it, so later prompts keep the learner's context.
+- `--record <file>` appends the step's label, duration, exit code, session ID, and session credit total as one JSON line.
+
+Run lifecycle commands (`azd up`, verifiers, `azd down`) with the matching helper so they land in the same record:
+
+```text
+node scripts/run-command.mjs --label "azd up" --log <run-dir>/logs/azd-up.log --record <run-dir>/timing.jsonl --cwd <workspace> -- azd up --no-prompt
+```
+
+At the end, `node scripts/summarize-run.mjs --record <run-dir>/timing.jsonl` prints a step table and totals for `run-report.md`. It counts each session's highest credit total once, because resumed sessions report a running total.
 
 Before launching a batch, run `copilot --help` and one harmless prompt smoke test. If that fails, do not start parallel or background journey processes.
 

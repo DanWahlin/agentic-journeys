@@ -46,6 +46,7 @@ const checks = {
   azurite: ['azurite', ['--version']],
   sqlcmd: ['sqlcmd', ['--version']],
   xcode: ['xcodebuild', ['-version']],
+  xcodebuild: ['xcodebuild', ['-version']],
 };
 
 function runCheck(tool) {
