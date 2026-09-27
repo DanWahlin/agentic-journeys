@@ -52,6 +52,7 @@ pnpm-debug.log*
 .pnp.*
 package-lock.json
 !/.github/skills/journey-runner/scripts/package-lock.json
+!/journeys/smart-todo/checkpoints/phase-1/journey/src/api/package-lock.json
 yarn.lock
 pnpm-lock.yaml
 dist/

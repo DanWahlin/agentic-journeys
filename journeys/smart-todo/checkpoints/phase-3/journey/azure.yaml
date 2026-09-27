@@ -1,0 +1,14 @@
+name: smart-todo
+metadata:
+  template: smart-todo@0.0.1
+services:
+  api:
+    project: ./src/api
+    host: function
+    language: ts
+infra:
+  provider: bicep
+  path: ./infra
+hooks:
+  postprovision:
+    run: ./infra/hooks/postprovision.js

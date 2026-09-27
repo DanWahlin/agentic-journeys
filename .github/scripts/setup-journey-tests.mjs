@@ -66,11 +66,15 @@ try {
       const reset = parseJson('az', ['ad', 'app', 'credential', 'reset', '--id', clientId, '--display-name', 'github-actions-journey-e2e', '--years', '1', '-o', 'json']);
       clientSecret = reset.password;
     }
-  } else if (await confirm(`Create ${spName} with Contributor on ${scope}?`)) {
+    // Existing principals created before role assignments were needed may only have Contributor.
+    run('az', ['role', 'assignment', 'create', '--assignee', clientId, '--role', 'Role Based Access Control Administrator', '--scope', scope, '-o', 'none']);
+  } else if (await confirm(`Create ${spName} with Contributor and Role Based Access Control Administrator on ${scope}?`)) {
     const created = parseJson('az', ['ad', 'sp', 'create-for-rbac', '--name', spName, '--role', 'Contributor', '--scopes', scope, '--years', '1', '-o', 'json']);
     clientId = created.appId;
     clientSecret = created.password;
     tenantId = created.tenant || tenantId;
+    // Journeys such as SmartTodo create role assignments in Bicep, which Contributor can't do.
+    run('az', ['role', 'assignment', 'create', '--assignee', clientId, '--role', 'Role Based Access Control Administrator', '--scope', scope, '-o', 'none']);
   } else {
     clientId = await ask('Existing service principal client ID', clientId);
     clientSecret = await askSecret('Existing service principal client secret', clientSecret);
