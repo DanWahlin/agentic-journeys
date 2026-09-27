@@ -6,16 +6,13 @@
   <img src="./images/n8n-workflow-automation.webp" alt="n8n: Workflow Automation on Azure" width="800" />
 </p>
 
-In this journey, you'll deploy [n8n](https://n8n.io), an open-source, self-hosted workflow automation tool, to Azure Container Apps with PostgreSQL. An AI agent generates the Bicep infrastructure, configures the health probes, and runs the deployment.
+In this journey, you'll deploy [n8n](https://n8n.io), an open-source, self-hosted workflow automation tool, to Azure Container Apps with PostgreSQL. An AI agent plans and generates the infrastructure, you deploy it, and then the agent builds a workflow that runs on it.
 
 ## Learning Objectives
 
-- Use the `oss-to-azure-deployer` agent with GitHub Copilot to generate Azure infrastructure through conversation
-- Plan and cost a deployment, preview it, then run `azd up` yourself
-- Understand how the agent loads app-specific and generic skills to build Bicep templates
-- Deploy n8n to Azure Container Apps with PostgreSQL using `azd up`
-- Configure health probes for slow-starting containers
-- Troubleshoot common deployment issues using Azure MCP (Model Context Protocol) tools and container logs
+- Plan and cost a deployment with the `oss-to-azure-deployer` agent, preview it, then run `azd up` yourself
+- See how the agent combines app-specific and Azure skills to generate Bicep
+- Configure health probes for a slow-starting container, and set a URL that only exists after deployment
 - Have the agent build an n8n workflow while the deployment runs, then run it through the n8n API
 
 > 💰 **Estimated Cost**: ~$25–35/month while the resources exist (see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure when you finish the journey.
@@ -93,8 +90,6 @@ graph TB
 
 ## Deploy with the Agent
 
-You'll use `oss-to-azure-deployer` (a custom agent defined in this repo) with GitHub Copilot to generate and deploy the entire infrastructure through conversation.
-
 <details>
 <summary><strong>When something fails</strong></summary>
 
@@ -118,25 +113,17 @@ verifier. Record the issue and resolution in issues.md. Do not print secrets.
 
 ### Step 1: Setup
 
-Run the following steps from the repository root. If you're in the parent directory that contains the clone, enter it first:
-
-```text
-cd agentic-journeys
-```
-
-Start the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started):
+From the repository root (run `cd agentic-journeys` if you're one level up), start [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) and select the deployment agent:
 
 ```text
 copilot
 ```
 
-Now select the deployment agent. Agents are specialized personas that know how to handle specific tasks:
-
 ```
 > /agent
 ```
 
-Select **`oss-to-azure-deployer`** from the list. You're now in an interactive session with the deployment agent.
+Choose **`oss-to-azure-deployer`**, a custom agent defined in this repository that knows how to deploy open-source apps to Azure. Every prompt below goes to this agent, in this one session.
 
 ### Step 2: Plan the deployment
 
@@ -149,7 +136,7 @@ Before anything is created, ask for the plan and what it costs. This is read-onl
   monthly cost if left running. Don't create files or Azure resources yet.
 ```
 
-Check the plan against the [architecture](#architecture): a Container App, PostgreSQL Flexible Server, Log Analytics, and a managed identity. PostgreSQL is most of the cost.
+Check the plan against the [architecture](#architecture): a Container App, PostgreSQL Flexible Server, and Log Analytics (a managed identity is optional). PostgreSQL is most of the cost.
 
 ### Step 3: Generate and preview
 
@@ -168,7 +155,7 @@ Check the plan against the [architecture](#architecture): a Container App, Postg
 ```
 
 <p align="center">
-  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, runs azd up, and the verifier checks the result" width="800" />
+  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, then azd up deploys it and the verifier checks the result" width="800" />
 </p>
 
 The agent loads the `n8n-azure` and `container-apps-deployment` skills, uses Azure MCP tools for current Bicep schemas, and generates `infra-n8n/`. Two details make n8n harder than Grafana.
@@ -185,7 +172,7 @@ The agent loads the `n8n-azure` and `container-apps-deployment` skills, uses Azu
   <img src="./images/webhook-url.webp" alt="Setting WEBHOOK_URL after deploy: azd up runs and the URL is assigned (the URL only exists after deployment), then the post-provision hook sets WEBHOOK_URL, a new revision starts, and the hook waits for six healthy checks" width="800" />
 </p>
 
-The post-provision hook, `infra-n8n/hooks/postprovision.js`, sets `WEBHOOK_URL` once the URL exists. That starts a new Container App revision, so the hook waits until `/healthz` and `/` return HTTP 200 six times in a row over 30 seconds.
+The post-provision hook, `infra-n8n/hooks/postprovision.js`, sets `WEBHOOK_URL` once the URL exists. That starts a new Container App revision, so the hook waits until `/healthz` and `/` return HTTP 200 six times in a row over 30 seconds. Compare the preview with the plan from Step 2. If the preview shows anything the plan didn't, ask the agent why before you deploy.
 
 ### Step 4: Deploy, and build a workflow while it runs
 
@@ -219,27 +206,19 @@ You can ask follow-up questions while you wait:
 
 ### Step 5: Verify
 
-Ask the agent to check the health endpoint, `WEBHOOK_URL`, and Container App logs:
-
-```text
-> Verify the n8n deployment. Report each acceptance criterion as pass or fail.
-```
-
-Run the checked-in verifier from the repository root on the host machine:
+Run the checked-in verifier from the repository root:
 
 ```text
 node .github/scripts/verify-n8n.mjs
 ```
 
-The verifier must print `PASS: /healthz and UI returned HTTP 200` and the deployed n8n URL. Open that URL in a browser and confirm that the rendered page shows either **Set up owner account** or the normal login page. HTTP 401 is not a successful UI check.
+It must print `PASS: /healthz and UI returned HTTP 200` and the n8n URL. Then have the agent check the rest of the acceptance criteria, including `WEBHOOK_URL`:
 
-If verification fails, report the failed criterion, exact command, redacted error output, and last successful step in the same agent session:
-
-```
-> The container is in CrashLoopBackOff, what's happening?
+```text
+> Verify the n8n deployment. Report each acceptance criterion as pass or fail.
 ```
 
-For a more detailed checklist, see the troubleshooting section.
+Open the URL and confirm that you see **Set up owner account** (HTTP 401 isn't a pass). If the container keeps restarting, ask the agent: *"The container is in CrashLoopBackOff. Check the logs and tell me what's wrong."*
 
 ### Step 6: Run the workflow Copilot built
 

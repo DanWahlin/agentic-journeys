@@ -6,16 +6,13 @@
   <img src="./images/grafana-observability.webp" alt="Grafana: Observability on Azure" width="800" />
 </p>
 
-You'll deploy [Grafana OSS](https://grafana.com/oss/grafana/), an open-source observability platform, to Azure Container Apps. Grafana uses an embedded SQLite database by default, so there is no external database to provision. This keeps the deployment small, while the final sections explain when PostgreSQL is a better fit.
+You'll deploy [Grafana OSS](https://grafana.com/oss/grafana/), an open-source observability platform, to Azure Container Apps. Grafana uses an embedded SQLite database by default, so there is no external database to provision. That keeps the deployment small and fast, and you'll decide for yourself when PostgreSQL is worth it.
 
 ## Learning Objectives
 
 - Plan and cost a deployment with an agent, preview it, then run `azd up` yourself
-- Deploy Grafana to Azure Container Apps using agentic AI
-- Understand why Grafana deploys with minimal configuration (no external database, fast startup)
-- Evaluate SQLite vs PostgreSQL for different environments
-- Use `/api/health` for reliable health probes
-- Handle scale-to-zero cold starts gracefully
+- Decide between SQLite and PostgreSQL for Grafana, and see the tradeoff for yourself
+- Use `/api/health` for health probes, and recognize a scale-to-zero cold start
 - Operate the deployed app through its API with a script the agent writes
 
 > 💰 **Estimated Cost**: ~$10–20/month while the resources exist (see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure when you finish the journey.
@@ -81,8 +78,6 @@ graph TB
 - **SQLite** (default): Embedded database, no external dependency
 - Optional: **Azure Database for PostgreSQL Flexible Server** for production persistence
 
-> ⚠️ **Storage note:** Grafana uses SQLite by default, which lives inside the container. Dashboards and data sources are lost when the container restarts. See [Storage Considerations](#storage-sqlite-vs-postgresql) for production options.
-
 **Infrastructure directory:** `infra-grafana/` (generated at the repo root when you run the deployment; it won't exist until then)
 
 ---
@@ -114,25 +109,17 @@ verifier. Record the issue and resolution in issues.md. Do not print secrets.
 
 ### Step 1: Setup
 
-Run the following steps from the repository root. If you're in the parent directory that contains the clone, enter it first:
-
-```text
-cd agentic-journeys
-```
-
-Start the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started):
+From the repository root (run `cd agentic-journeys` if you're one level up), start [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) and select the deployment agent:
 
 ```text
 copilot
 ```
 
-Now select the deployment agent. Agents are specialized personas that know how to handle specific tasks:
-
 ```
 > /agent
 ```
 
-Select **`oss-to-azure-deployer`** from the list. You're now in an interactive session with the deployment agent.
+Choose **`oss-to-azure-deployer`**, a custom agent defined in this repository that knows how to deploy open-source apps to Azure. Every prompt below goes to this agent, in this one session.
 
 ### Step 2: Plan the deployment
 
@@ -142,9 +129,8 @@ Before anything is created, ask for the plan and what it costs. This is read-onl
 > Plan a Grafana deployment to Azure Container Apps with Bicep and azd:
   SQLite in the container's local storage (no Azure Files mount),
   minReplicas: 0 and maxReplicas: 1, /api/health for probes, and the westus
-  region. List each Azure resource, its SKU, and the
-  estimated monthly cost if left running. Don't create files or Azure
-  resources yet.
+  region. List each Azure resource, its SKU, and the estimated monthly cost
+  if left running. Don't create files or Azure resources yet.
 ```
 
 Check the plan against the [architecture](#architecture): one Container App, a Container Apps environment, and Log Analytics, with no database server. Then ask about the one real decision in this deployment:
@@ -172,10 +158,10 @@ A good answer matches this picture: SQLite suits development and testing, but da
 ```
 
 <p align="center">
-  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, runs azd up, and the verifier checks the result" width="800" />
+  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, then azd up deploys it and the verifier checks the result" width="800" />
 </p>
 
-The agent loads the `grafana-azure` and `container-apps-deployment` skills, uses the Azure Skills plugin for current Bicep schemas, and generates `infra-grafana/`. The preview lists what `azd up` would create without creating it. Compare it with the plan from Step 2: the same resources, and nothing you didn't expect.
+The agent loads the `grafana-azure` and `container-apps-deployment` skills, uses the Azure Skills plugin for current Bicep schemas, and generates `infra-grafana/`. The preview lists what `azd up` would create without creating it. Compare it with the plan from Step 2: the same resources, and nothing you didn't expect. If the preview shows anything the plan didn't, ask the agent why before you deploy.
 
 ### Step 4: Deploy
 
@@ -191,27 +177,19 @@ The agent already prepared the environment, so `azd` shouldn't ask any questions
 
 ### Step 5: Verify
 
-Ask the agent to check the health endpoint, Container App logs, and deployed `maxReplicas` setting:
-
-```text
-> Verify the Grafana deployment. Report each acceptance criterion as pass or fail.
-```
-
-Run the checked-in verifier from the repository root on the host machine:
+Run the checked-in verifier from the repository root:
 
 ```text
 node .github/scripts/verify-grafana.mjs
 ```
 
-The verifier must print `PASS: <grafana-url>/api/health returned HTTP 200 and database=ok` and the deployed URL. Open that URL in a browser and log in with the deployed admin credentials. Retrieve a generated password only in a private terminal, and do not paste it into the agent session or shared logs.
+It must print `PASS: <grafana-url>/api/health returned HTTP 200 and database=ok` and the URL. Then have the agent check the rest of the acceptance criteria:
 
-If verification fails, report the failed criterion, exact command, redacted error output, and last successful step in the same agent session:
-
-```
-> Grafana is returning 502 errors
+```text
+> Verify the Grafana deployment. Report each acceptance criterion as pass or fail.
 ```
 
-The agent will check if it's a cold start issue (scale-from-zero takes 30-60s) or a real problem.
+Open the URL and sign in as `admin`. Read the password with `azd env get-value GRAFANA_ADMIN_PASSWORD` in a private terminal, and don't paste it into the agent session. A 502 on the first request is usually a cold start from zero replicas; wait 30 to 60 seconds and retry.
 
 ### Step 6: Build a dashboard with Copilot
 

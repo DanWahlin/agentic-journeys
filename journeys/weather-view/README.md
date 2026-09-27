@@ -175,19 +175,7 @@ cd ../weather-view-workspace/journeys/weather-view
 copilot
 ```
 
-#### Step 2: Confirm Azure Skills
-
-The Azure Skills plugin gives GitHub Copilot current Bicep schemas, deployment planning, infrastructure validation, and Azure troubleshooting context that the base model may not have. You installed it in [Before you start](#prerequisites); confirm this session can use it:
-
-```
-> Confirm whether the Azure Skills plugin is available in this session. List
-  the Azure skills or MCP tools you can use for Bicep schema lookup,
-  infrastructure guidance, deployment planning, validation, and deployment.
-  Do not create files or Azure resources yet. If the plugin is unavailable,
-  stop and tell me to install azure@azure-skills.
-```
-
-#### Step 3: Plan, then scaffold the accessible app shell
+#### Step 2: Plan, then scaffold the accessible app shell
 
 > **Default stack:** vanilla HTML5 + CSS + modern JavaScript ES modules. Do not substitute a framework or UI library.
 
@@ -203,11 +191,10 @@ Have Copilot plan before it writes anything. Press **Shift+Tab** until the mode 
 Read the plan. If it adds a framework, a backend, a build tool, or files `PLAN.md` doesn't ask for, say so now, while changing course costs one sentence. When it looks right, press **Shift+Tab** to leave plan mode and build it:
 
 ```
-> Read PLAN.md, especially "Choose Your Stack," "Project Structure," "Product
-  Experience," and "Accessibility and Performance." Create the initial
-  WeatherView project with index.html, styles.css, package.json, app.js,
-  weather-api.js, and weather-maps.js. For this step, build the semantic app
-  shell and responsive visual system only:
+> Build the app shell you just planned: create index.html, styles.css,
+  package.json, app.js, weather-api.js, and weather-maps.js as PLAN.md
+  specifies. For this step, build the semantic app shell and responsive
+  visual system only:
   - header/navigation with branded title
   - labeled city search
   - Celsius/Fahrenheit control
@@ -230,15 +217,13 @@ Read the plan. If it adds a framework, a backend, a build tool, or files `PLAN.m
 - At narrow width, do cards and header controls reflow without horizontal scrolling?
 - Does the design still work with `prefers-reduced-motion`?
 
-Start the local app using the generated command. The exact command belongs in the generated `package.json` and project README; do not invent a second server path.
-
-Open the local URL in a browser, resize it to phone width, and use only the keyboard for one pass through the controls.
+Start the app with the command in the generated `package.json`, open it in a browser, resize it to phone width, and make one pass through the controls using only the keyboard.
 
 Then run `/diff` in Copilot to see every file this step created or changed. Get in the habit: after each build step, `/diff` shows you exactly what the agent did before you build on it.
 
 **💡 What you're learning:** Generating the shell separately keeps visual and accessibility decisions reviewable. If API code and UI arrive in one large change, it is harder to tell whether failures come from the data contract, rendering, or layout.
 
-#### Step 4: Add weather data, geolocation, and city search
+#### Step 3: Add weather data, geolocation, and city search
 
 ```
 > Read "Primary User Flow," "City Search," "Weather Data," "Weather Code
@@ -331,7 +316,7 @@ Run the generated tests yourself. If Playwright's Chromium browser isn't install
 
 #### Step 2: Generate the local verification script before running it
 
-The journey will ask you to run `scripts/verify-app.mjs`, so create it first. This is deliberately explicit: a tutorial should never tell you to execute a file it did not help you create.
+Have Copilot write the verifier before you run it, so you've read every script you execute.
 
 ```
 > Create scripts/verify-app.mjs in this journey directory as specified in
@@ -388,7 +373,17 @@ Use the Playwright network mock to return five dates but only four maximum tempe
 
 #### Step 1: Generate Bicep and azd configuration with Azure Skills
 
-The prompt stays short on purpose. The full deployment contract (Bicep scope and modules, SKU, tags, outputs, the `dist` build, and `staticwebapp.config.json`) lives in the "Azure Deployment" section of `PLAN.md`, and the Azure Skills plugin supplies current schemas instead of remembered ones.
+Azure Skills gives Copilot current Bicep schemas, deployment planning, and validation that the base model may not have. Confirm this session can use it:
+
+```
+> Confirm whether the Azure Skills plugin is available in this session. List
+  the Azure skills or MCP tools you can use for Bicep schema lookup,
+  infrastructure guidance, deployment planning, validation, and deployment.
+  Do not create files or Azure resources yet. If the plugin is unavailable,
+  stop and tell me to install azure@azure-skills.
+```
+
+The generation prompt stays short on purpose. The full deployment contract (Bicep scope and modules, SKU, tags, outputs, the `dist` build, and `staticwebapp.config.json`) lives in the "Azure Deployment" section of `PLAN.md`, and the Azure Skills plugin supplies current schemas instead of remembered ones.
 
 ```
 > Read the "Azure Deployment" section in PLAN.md. Use the installed Azure
@@ -446,7 +441,7 @@ Let the agent prepare the environment instead of copying values through a chain 
   the names of environment keys set, but redact the subscription ID.
 ```
 
-`Microsoft.Web` is the only provider this journey needs. Do not register unrelated Container Apps, SQL, Kubernetes, AI, or monitoring providers.
+`Microsoft.Web` is the only provider this journey needs; don't let the agent register others.
 
 #### Step 4: Run the deployment yourself
 
@@ -456,9 +451,7 @@ Run the one command that matters from `journeys/weather-view`:
 azd up
 ```
 
-You may be prompted for an environment name and location. Use a unique environment name and `eastus2` unless you intentionally selected another supported Static Web Apps location.
-
-Do not continue until infrastructure provisioning and the `web` service deployment both exit successfully.
+The agent already prepared the environment, so `azd` shouldn't ask questions. Wait until provisioning and the `web` deployment both succeed.
 
 > ⏳ **While you wait:** Open `infra/main.bicep` and trace the environment name from azd parameter to resource-group name, Static Web App name, service tag, and `WEB_URL` output. Ask GitHub Copilot: *"Explain how azd finds the Static Web App resource and deploys this project without a deployment token or GitHub Actions workflow."*
 

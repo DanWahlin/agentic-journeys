@@ -15,6 +15,7 @@ In this journey, you'll build AIMarket, a lightweight marketplace with semantic 
 - Build a React storefront that consumes the API
 - Add semantic product search with Azure AI Search
 - Build an AI shopping assistant with Microsoft Foundry
+- Hand a feature to the Copilot cloud agent while you build another, then review its pull request with Copilot code review
 - Deploy the full stack to Azure Container Apps using `azd`
 
 > 💰 **Estimated Cost**: ~$100–115/month while the resources exist (AI Search Basic is approximately $75 of that cost; see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure when you finish the journey.
@@ -317,17 +318,7 @@ If any of these are missing, ask GitHub Copilot to fix them one at a time:
 
 #### Step 5: Test the API yourself
 
-Start the API and call it directly. The documented local URL is `http://localhost:3000`.
-
-First, confirm port 3000 is available. This command works from PowerShell, Command Prompt, Mac, and Linux:
-
-```text
-node -e "const net=require('node:net');const s=net.createServer();s.once('error',()=>{console.error('Port 3000 is in use');process.exit(1)});s.once('listening',()=>s.close(()=>console.log('Port 3000 is available')));s.listen(3000,'127.0.0.1')"
-```
-
-If the port is already in use, you can choose another port, such as 3001, and use that port in the commands below.
-
-In the first terminal, start the default Node.js API from the `journeys/aimarket` directory:
+From `journeys/aimarket`, start the API in its own terminal:
 
 ```text
 cd api
@@ -336,42 +327,9 @@ npm run build
 npm start
 ```
 
-The API should report that it is listening at `http://localhost:3000`. If you selected Python, .NET, or Java, use the exact start command in the generated `api/README.md`.
+It listens on `http://localhost:3000`. (If port 3000 is taken, set `PORT` first: `$env:PORT=3001` in PowerShell, or `PORT=3001 npm start` on Mac and Linux, and use that port below. For Python, .NET, or Java, use the start command in the generated `api/README.md`.)
 
-If port 3000 was unavailable, start the default Node.js API on port 3001 instead (or pick another port):
-
-**Mac, Linux, or Git Bash:**
-
-```bash
-PORT=3001 npm start
-```
-
-**PowerShell:**
-
-```powershell
-$env:PORT=3001
-npm start
-```
-
-Replace `3000` with `3001` in the HTTP commands below.
-
-In a second terminal, call the health and products endpoints.
-
-**Mac, Linux, or Git Bash:**
-
-```bash
-curl --fail http://localhost:3000/api/health
-curl --fail http://localhost:3000/api/products
-```
-
-**PowerShell:**
-
-```powershell
-Invoke-RestMethod -Uri http://localhost:3000/api/health
-Invoke-RestMethod -Uri http://localhost:3000/api/products
-```
-
-The health response must contain `"status": "ok"`. The products response must contain all seeded products.
+Open these in your browser: [`/api/health`](http://localhost:3000/api/health) must return `"status": "ok"`, and [`/api/products`](http://localhost:3000/api/products) must list all 10 seed products.
 
 If either request fails, paste the exact start command, terminal error, and HTTP response into GitHub Copilot:
 
@@ -422,8 +380,10 @@ Run the following prompt. Ensure that you replace `[YOUR API PORT]` with the por
 You need the API and frontend running at the same time. Ask GitHub Copilot to set this up:
 
 ```
-> Create a way to start both the API and the React frontend with a single 
-command from the project root such as 'npm run app'. The API runs in api/ and the frontend runs in client/. I want to run one command and see both start.
+> Create a way to start both the API and the React frontend with a single
+  command from the project root, such as 'npm run app'. The API runs in api/
+  and the frontend runs in client/. I want to run one command and see both
+  start.
 ```
 
 Start both services using your newly created command, then open `http://localhost:5173` in your browser.
@@ -821,33 +781,28 @@ Start the deployment from the `journeys/aimarket` directory:
 azd up
 ```
 
-You may be asked if you'd like to check your Azure development tools. If you're asked and choose `Yes`, the command will list all recommended tools and their versions. If you know all of the required tools are installed, you can choose `No` to skip the check.
+Wait until `azd up` and its `postdeploy` hook both succeed. If `azd` offers to check your development tools, you can skip it.
 
-Do not continue until `azd up` and the required `postdeploy` hook exit successfully.
+> ⏳ **While you wait:** Open `infra/hooks/postdeploy.js` and trace how `VITE_API_URL` reaches the storefront build after the API exists. Then ask Copilot why the API and storefront are *separate* Container Apps, and what that means for scaling.
 
-> ⏳ **While you wait:** While `azd` builds and publishes the application images and Azure provisions Container Apps, AI Search, and Foundry:
->
-> 1. Watch resources in the [Azure Portal](https://portal.azure.com) or `az resource list --resource-group rg-<env-name> --output table`.
-> 2. Open `infra/hooks/postdeploy.js` and trace how `VITE_API_URL` is set after deploy.
-> 3. Think about why the API and frontend are *separate* Container Apps. What are the scaling implications?
+If `azd up` fails, use the "When something fails" prompt in the same session.
 
-Deployment may take several minutes. If it fails, ask GitHub Copilot to help diagnose:
+#### Step 3: Verify the live deployment
 
-```
-> azd up failed with this error: [paste the error]. What's wrong and what can be done to fix it?
-```
-
-#### Step 3: Confirm the frontend API URL (should be automatic)
-
-The **postdeploy hook** should have rebuilt the web image with `VITE_API_URL=<API_URL>/api`. Read the deployed storefront URL:
+Run the verifier from the `journeys/aimarket` directory on the host machine:
 
 ```text
-azd env get-value WEB_URL
+node ../../.github/scripts/verify-aimarket.mjs
 ```
 
-Open the returned URL in your browser and confirm that the products load.
+It must print `PASS: health, 10 products, images, search, chat, storefront, and API integration`. It checks the deployed API, semantic search, a real assistant answer, and that the storefront was built with the production API URL.
 
-If they do not, run this prompt:
+Open the value returned by `azd env get-value WEB_URL` in your browser and confirm that the product grid shows 10 products.
+
+<details>
+<summary>The storefront says <code>Failed to load products</code></summary>
+
+The storefront needs the API URL at build time, so the postdeploy hook rebuilds it after the API exists. Rerun it with `node infra/hooks/postdeploy.js` (the web app isn't an `azd` service, so `azd deploy web` won't work). If it still fails:
 
 ```
 > The frontend can't reach the API. Run or fix infra/hooks/postdeploy.js.
@@ -857,32 +812,7 @@ If they do not, run this prompt:
   payload launcher required by the container-apps-deployment skill.
 ```
 
-<details>
-<summary>Manual fallback: run the portable frontend hook</summary>
-
-The web Container App is not declared as an azd service. For a storefront-only rebuild, run the JavaScript hook directly instead of `azd deploy web`:
-
-```text
-node infra/hooks/postdeploy.js
-```
-
-The hook must read all dynamic values through `azd env get-value`, call `az acr build` and `az containerapp update` with argument arrays, and verify that the expected revision is healthy and provisioned before exiting. With `minReplicas: 0`, either `Running` or `ScaledToZero` is ready; requiring only `Running` causes a false timeout. The hook's storefront request activates a scale-to-zero revision. The host must not need Docker or Buildx.
-
 </details>
-
-**💡 What you're learning:** Build-time env vars for SPAs are a classic multi-service deploy challenge. Production teams use postdeploy hooks, runtime config injection, or two-stage CI/CD so the first deploy still ends green.
-
-#### Step 4: Verify the live deployment
-
-Run the verifier from the `journeys/aimarket` directory on the host machine:
-
-```text
-node ../../.github/scripts/verify-aimarket.mjs
-```
-
-The verifier must print `PASS: health, 10 products, images, search, chat, storefront, and API integration`. It checks the deployed health endpoint, product count, image responses, semantic-search results, an assistant-shaped response to a comparison prompt that mentions **UltraBook Pro 15**, the storefront response, and the production API host embedded in the frontend assets. The comparison prompt is intentional: it verifies that GPT-5 has enough shared reasoning/output capacity to produce visible content.
-
-Open the value returned by `azd env get-value WEB_URL` in your browser and confirm that the product grid displays 10 products. If the page reports `Failed to load products`, return to Step 3.
 
 Leave **AI Search** enabled and enter `something lightweight for travel`. Confirm that the grid includes **UltraBook Pro 15** and displays **AI-powered results**. Disable AI Search and confirm that a literal name or tag search still filters the grid.
 
@@ -1052,7 +982,7 @@ The `ARG VITE_API_URL` line must come BEFORE the `npm run build` step in `client
 
 ## Verification Checklist
 
-Use the acceptance contract in [Phase 4, Step 4](#step-4-verify-the-live-deployment), then run `node ../../.github/scripts/verify-aimarket.mjs` from `journeys/aimarket`.
+Use the acceptance contract in [Phase 4, Step 3](#step-3-verify-the-live-deployment), then run `node ../../.github/scripts/verify-aimarket.mjs` from `journeys/aimarket`.
 
 </details>
 
