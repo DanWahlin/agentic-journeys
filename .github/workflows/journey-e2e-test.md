@@ -46,6 +46,8 @@ env:
 
 engine:
   id: copilot
+  version: latest
+  model: claude-sonnet-5
 
 strict: false
 sandbox:
@@ -77,6 +79,14 @@ network:
 
 You are the journey test harness. Your job is to run the selected journey in this repository end-to-end, verify it works, capture screenshots, tear down Azure resources, and produce a focused report. If the selected journey is `all`, run every journey sequentially.
 
+## Rules That Decide Pass or Fail
+
+- **Run the journey in this session.** Don't hand it to a background agent that can outlive you. If you use a sub-agent, wait for it to finish and read its result before you report.
+- **Only your own resources count.** Get the resource group and URLs only from `azd env get-value` in the environment this run created. Never inspect, reuse, or report on resource groups or apps that already existed in the subscription, even if their names look related, and never delete them.
+- **Never weaken the design to pass.** Don't switch to SQL authentication, add passwords, disable managed identity, loosen a gate, or edit the checked-in verifier. If a step can't pass as designed, report it as BLOCKED with the exact error.
+- **PASS needs evidence.** A journey passes only when its checked-in verifier prints its `PASS` line against this run's deployment. Report any phase you didn't finish as FAIL or PARTIAL with the reason.
+- **Print the full report to the log too**, because creating the report issue can fail (for example, when issues are disabled in a fork).
+
 ## Configuration
 
 - **Language**: ${{ github.event.inputs.language || 'Node.js' }}
@@ -103,6 +113,22 @@ if ! command -v azd &>/dev/null; then
   curl -fsSL https://aka.ms/install-azd.sh | bash
 fi
 azd version
+```
+
+### Install SmartTodo tools (smart-todo only)
+
+SmartTodo also needs Azure Functions Core Tools v4 and the Go-based `sqlcmd`:
+
+```bash
+if ! command -v func &>/dev/null; then
+  npm install -g azure-functions-core-tools@4 --unsafe-perm true
+fi
+func --version
+if ! command -v sqlcmd &>/dev/null || ! sqlcmd --version 2>/dev/null | grep -q "Version"; then
+  curl -fsSL -o /tmp/sqlcmd.tar.bz2 https://github.com/microsoft/go-sqlcmd/releases/latest/download/sqlcmd-linux-amd64.tar.bz2
+  sudo tar -xjf /tmp/sqlcmd.tar.bz2 -C /usr/local/bin sqlcmd
+fi
+sqlcmd --version
 ```
 
 ### Authenticate to Azure
@@ -206,7 +232,9 @@ mkdir -p "$JOURNEY_DIR"
 cd "$JOURNEY_DIR"
 ```
 
-Copy `PLAN.md` from the repo if it exists (full-stack journeys only):
+**SmartTodo uses a workspace instead:** make sure `$JOURNEY_DIR` doesn't exist yet, set a Git identity if none is configured (`git config --global user.name journey-e2e` and `git config --global user.email journey-e2e@users.noreply.github.com`), then run `node journeys/smart-todo/setup/setup.mjs --local --workspace $JOURNEY_DIR` from the repository checkout. **Never pass `--start-at`:** the checkpoints are finished answers for learners, and a run that deploys them hasn't tested the journey's prompts. Generate Phase 1 and Phase 3 from the README prompts, and report FAIL if either phase's code came from `checkpoints/`. It copies the journey, agents, skills, scripts, and docs, and commits them on `main`. Run every SmartTodo command from `$JOURNEY_DIR/journeys/smart-todo`, and follow the SmartTodo notes in the journey-runner skill.
+
+For other full-stack journeys, copy `PLAN.md` from the repo if it exists:
 
 ```bash
 cp /path/to/journeys/<journey>/PLAN.md . 2>/dev/null
@@ -219,15 +247,15 @@ Run the journey end-to-end using the journey-runner approach:
 1. **Parse** the journey's `README.md` — extract journey type (OSS vs full-stack), phases, prompts, shell commands, and verification checks
 2. **Execute phases** — run prompts and shell commands in order, generating all code and infra inside `$JOURNEY_DIR`
    - For full-stack journeys, replace `[YOUR LANGUAGE]` with the configured language
-   - For smart-todo, **skip Phase 2 (iOS/SwiftUI)** since Xcode is not available in CI
-3. **Deploy**: Run `azd up --no-prompt` from `$JOURNEY_DIR` (set `AZURE_LOCATION` to the configured location)
+   - For smart-todo, set `SMARTTODO_DIR="$JOURNEY_DIR/journeys/smart-todo"` and run every command there. **Skip Phase 2** (no Xcode in CI), **skip all of Phase 4** (it needs a GitHub repository), and skip every step marked 🐙, because the run has no disposable repository. Use each plan's Decision Points defaults instead of the interview. Still run every local gate: `npm run check`, the `phase1-red` diff, the checked-in verifier with `--base-url` against the local API, `node scripts/check-infra.mjs` before `azd up`, and the verifier against the deployment. The README builds Phases 1 to 3 as a `gh stack` of pull requests; there is no repository to stack against here, so use plain branches instead: `git switch -c phase-1-api` for Phase 1, then after its gates pass, fast-forward `main` (`git switch main && git merge --ff-only phase-1-api`) and create `phase-3-azure` from `main`. Run the local API from the stack checkout. Set `AZURE_PRINCIPAL_TYPE` to `ServicePrincipal`, `AZURE_PRINCIPAL_ID` to `$AZURE_CLIENT_ID` (Azure SQL identifies a service principal admin by its application ID), and `AZURE_PRINCIPAL_LOGIN` to the service principal's display name (read it with `az ad sp show --id $AZURE_CLIENT_ID --query displayName -o tsv`; if Microsoft Graph denies that, use `$AZURE_CLIENT_ID`)
+3. **Deploy**: Run `azd up --no-prompt` from `$JOURNEY_DIR` (from `$SMARTTODO_DIR` for smart-todo), with `AZURE_LOCATION` set to the configured location
 4. **Verify**: Run verification commands from the README
    - For n8n, do not immediately curl the UI root after `azd up`. First poll `$N8N_URL/healthz` for up to 5 minutes, then verify the UI root. The n8n journey should generate Container Apps probes against `/healthz` and use `minReplicas: 1` for CI/dev verification.
 5. **Screenshot**: If the journey has a web frontend URL, use Playwright to capture a screenshot:
    - Navigate to the URL, wait for `networkidle`, wait 3 extra seconds, take a full-page screenshot
    - Save as `screenshot-<journey>.png` in `$JOURNEY_DIR`
 6. **Copy screenshot to suite folder**: `cp $JOURNEY_DIR/screenshot-*.png $SUITE_DIR/screenshots/ 2>/dev/null || true`
-7. **Tear down**: Always run `azd down --force --purge --no-prompt` from `$JOURNEY_DIR` regardless of success or failure
+7. **Tear down**: Always run `azd down --force --purge --no-prompt` from `$JOURNEY_DIR` (from `$SMARTTODO_DIR` for smart-todo) regardless of success or failure
 8. **Delete working directory**: `rm -rf $JOURNEY_DIR`
 9. **Log results**: Record pass/fail for build, deploy, verify, cleanup phases
 
