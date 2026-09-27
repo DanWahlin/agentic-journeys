@@ -8,14 +8,14 @@
 
 > ⚠️ **Skip this journey unless you specifically want AKS concepts.** It costs **~$200+/month if left running** (node VMs + load balancer), needs **vCPU quota**, and takes longer than Grafana/n8n. If you want a full-stack build instead, see [AIMarket](../aimarket/README.md).
 
-[Apache Superset](https://superset.apache.org/) needs init containers (containers that run before the main app starts for tasks such as database migrations), shared volumes, and custom configuration mounts. These patterns fit Kubernetes well. You'll use the agent to generate AKS infrastructure, deploy a full BI platform, and see when Kubernetes is worth the added cost and complexity.
+[Apache Superset](https://superset.apache.org/) needs init containers (containers that run before the main app starts for tasks such as database migrations), shared volumes, and custom configuration mounts. These patterns fit Kubernetes well. You'll have the agent plan and cost AKS infrastructure, deploy a full BI platform yourself, and see when Kubernetes is worth the added cost and complexity.
 
 ## Learning Objectives
 
 - Understand when AKS is required instead of Container Apps
+- Review a deployment's plan and cost with an agent before paying for it, then run `azd up` yourself
 - Deploy Superset with init containers, shared volumes, and a mounted ConfigMap (a Kubernetes object that stores configuration files)
 - Install psycopg2-binary into a shared emptyDir (a temporary shared volume that both containers can access) for PostgreSQL connectivity
-- Use `azure_deploy_plan` with `target=AKS` for Kubernetes deployment planning
 - Debug AKS-specific issues: init container failures, CrashLoopBackOff (a Kubernetes state where a container keeps crashing and restarting), SQLite fallback
 
 > 💰 **Estimated Cost**: ~$200–215/month while the resources exist (AKS nodes are the main cost; see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure immediately after the journey.
@@ -33,18 +33,12 @@ This journey supports Windows PowerShell, Mac, and Linux.
 
 The signed-in Azure account must have permission to create AKS, PostgreSQL Flexible Server, Load Balancer, managed identity, and Log Analytics resources and to invoke AKS run commands. The target region must have quota for at least four vCPUs.
 
-Run these read-only checks on the host machine before you create Azure resources:
+**Before you start:**
 
-```text
-az version
-az account show --output table
-az vm list-usage --location westus --output table
-azd version
-node --version
-copilot --version
-```
-
-Confirm that `az account show` identifies the intended subscription, the target region has at least four available vCPUs, `azd` is version 1.28.0 or later, and Node.js is a currently supported LTS release. Stop and fix the prerequisite if any check fails. The host does not need `kubectl` or Helm because the hook runs both tools inside Azure through AKS run command. See the [cross-platform installation guide](../../docs/tool-installation.md) for installation instructions.
+1. Run each command in the Validation column, and install anything that fails. The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options. You don't need `kubectl` or Helm: the hook runs both inside Azure.
+2. Confirm that `az account show --output table` shows the subscription you intend to use, and that `az vm list-usage --location westus --output table` shows at least four available vCPUs.
+3. Run `azd config set auth.useAzCliAuth true`, so `azd` reuses your Azure CLI sign-in.
+4. Inside `copilot`, install the Azure Skills plugin once: `/plugin marketplace add microsoft/azure-skills`, then `/plugin install azure@azure-skills`.
 
 > [!NOTE]
 > GitHub Copilot CLI is the documented and validated command-line path. You may adapt the deployment prompt for another agentic coding tool. For another tool, run: **"Copy or adapt this repository's `.github/skills` into your supported skills or instructions location, preserving their behavior and reporting anything unsupported."**
@@ -108,11 +102,15 @@ graph TB
 
 ### Why AKS Instead of Container Apps?
 
-Superset requires:
-- **Init containers** for database migrations and psycopg2 installation
-- **Shared volumes** (emptyDir) between init and main containers
-- **ConfigMap mounting** for `superset_config.py`
-- **More control** over the deployment lifecycle
+<p align="center">
+  <img src="./images/container-apps-vs-aks.webp" alt="Container Apps or AKS: Container Apps is managed with no cluster to run and scales to zero, which fits Grafana and n8n for about 10 to 35 dollars a month. AKS gives you full Kubernetes and Helm and full control of every pod, which this Superset setup uses, for about 200 dollars a month." width="700" />
+</p>
+
+Superset's setup is a classic Kubernetes pod: an init container installs the PostgreSQL driver and runs migrations, a volume carries the driver into the main container, and a ConfigMap supplies the config file. This journey uses AKS to teach those patterns and the control they give you, and to show when that control is worth the extra cost:
+
+<p align="center">
+  <img src="./images/superset-pod.webp" alt="Inside the Superset pod: an init container runs pip install psycopg2 and superset db upgrade and writes to a shared emptyDir volume named psycopg2-lib. The read-only main Gunicorn container reads from that volume, loads superset_config.py from a ConfigMap, and connects to Azure PostgreSQL with sslmode=require." width="750" />
+</p>
 
 > **Where does NGINX come from?** The post-provision hook uses AKS run command to run Helm inside Azure. Helm installs the NGINX Ingress Controller, which provides HTTP routing and a public Load Balancer IP. The host does not need Helm or `kubectl`.
 
@@ -120,139 +118,107 @@ Superset requires:
 
 ## Deploy with the Agent
 
-In GitHub Copilot, use the repository's `oss-to-azure-deployer` agent to generate and deploy the AKS infrastructure from your prompts.
+<details>
+<summary><strong>When something fails</strong></summary>
 
-> **💡 Tip: Track issues as you go.** Add *"If you encounter any issues, log them to issues.md so they can be tracked and fixed"* to your prompt. This keeps generation and deployment problems in one place while you iterate.
+AI-generated infrastructure isn't deterministic, so expect an occasional failure. Stay in the same Copilot session, remove passwords, tokens, keys, and connection strings from the output, and use this prompt:
 
-> [!IMPORTANT]
-> **When something fails**
-> These journeys are designed to provide a solid starting point, but you may encounter errors along the way due to the non-deterministic nature of AI code generation. If a command or process fails, follow these steps to get help:
->
-> 1. Stay in the same AI coding session so it retains the journey context.
-> 2. Paste the exact command and relevant error output. Don't paraphrase the error.
-> 3. Include your operating system, shell, current phase, and last successful step.
-> 4. Remove passwords, tokens, connection strings, keys, cookies, and `.env` values before pasting.
-> 5. Ask the agent to inspect the relevant application and Azure logs, explain the root cause, make the smallest safe fix, rerun the failed step, and run the journey verifier.
-> 6. Record the problem and resolution in `issues.md`.
->
-> Use this prompt:
->
-> ```text
-> The following command failed during <journey phase> on <OS and shell>:
->
-> <exact command>
->
-> Relevant error output:
->
-> <redacted error output>
->
-> Inspect the relevant application and Azure logs, explain the root cause,
-> make the smallest safe fix, rerun the failed step, and run the journey
-> verifier. Record the issue and resolution in issues.md. Do not print secrets.
-> ```
+```text
+The following command failed during <journey phase> on <OS and shell>:
+
+<exact command>
+
+Relevant error output:
+
+<redacted error output>
+
+Inspect the relevant application and Azure logs, explain the root cause,
+make the smallest safe fix, rerun the failed step, and run the journey
+verifier. Record the issue and resolution in issues.md. Do not print secrets.
+```
+
+</details>
 
 ### Step 1: Setup
 
-Run the following steps from the repository root. If you're in the parent directory that contains the clone, enter it first:
-
-```text
-cd agentic-journeys
-```
-
-Configure `azd` to reuse the signed-in Azure CLI session:
-
-```text
-azd config set auth.useAzCliAuth true
-```
-
-The command must exit successfully.
-
-Start the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started):
+From the repository root (run `cd agentic-journeys` if you're one level up), start [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) and select the deployment agent:
 
 ```text
 copilot
 ```
 
-If you haven't installed the Azure Skills plugin yet, do it now. This one-time setup adds deployment tools, Bicep schema lookups, and infrastructure generation; see the root [Quick Start](../../README.md#quick-start) for details.
-
-```
-> /plugin marketplace add microsoft/azure-skills
-> /plugin install azure@azure-skills
-```
-
-Now select the deployment agent. Agents are specialized personas that know how to handle specific tasks:
-
 ```
 > /agent
 ```
 
-Select **`oss-to-azure-deployer`** from the list. You're now in an interactive session with the deployment agent.
+Choose **`oss-to-azure-deployer`**, a custom agent defined in this repository that knows how to deploy open-source apps to Azure. Every prompt below goes to this agent, in this one session.
 
-### Step 2: Deploy
+### Step 2: Plan the deployment and its cost
+
+This is the most expensive journey, so decide with the numbers in front of you. The plan is read-only:
+
+```
+> Plan an Apache Superset deployment to Azure with Bicep and azd, using
+  AKS with two Standard_D2s_v3 nodes (not Container Apps), Azure Database
+  for PostgreSQL Flexible Server, and the westus region. List each Azure
+  resource, its SKU, and the estimated monthly cost if left running, and
+  explain why this workload uses AKS. Don't create files or Azure resources
+  yet.
+```
+
+Expect about $200 a month, most of it the two AKS nodes, and an explanation that matches [Why AKS](#why-aks-instead-of-container-apps). Don't trade down to one node to save money: Superset, the ingress controller, and the AKS run-command pod don't fit on one. If you only want to see the result, stop here: nothing has been created.
+
+### Step 3: Generate and preview
+
+```
+> Generate the infrastructure for that plan: Bicep and Kubernetes manifests
+> in infra-superset/, azure.yaml, and infra-superset/hooks/postprovision.js.
+> Generate secure passwords for all credentials and store them only in the
+> azd environment. The hook must attach the Kubernetes manifests to
+> `az aks command invoke`, run Helm and kubectl inside Azure, and poll the
+> load balancer without requiring those tools on the host. Prepare the azd
+> environment for westus and my current subscription, then run
+> azd provision --preview and summarize what it will create. Don't run
+> azd up. If a step fails, inspect the relevant logs, make the smallest safe
+> correction, rerun the failed step, and record the problem and resolution
+> in issues.md. Do not print secrets.
+```
 
 <p align="center">
-  <img src="./images/azure-deployment.webp" alt="Deploy Superset to Azure" width="800" />
+  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, then azd up deploys it and the verifier checks the result" width="800" />
 </p>
 
-Give the agent one prompt that covers the location, secrets, target platform, and issue handling:
+The agent loads the `superset-azure` skill and generates Bicep and Kubernetes manifests in `infra-superset/`. When you deploy, its post-provision hook creates the Superset secret key and admin password if they're missing (never printing them), then installs NGINX and Superset from inside Azure. Compare the preview with the plan from Step 2. If the preview shows anything the plan didn't, ask the agent why before you deploy.
 
-```
-> Deploy Apache Superset to Azure using Bicep and azd. Set the location to westus,
-> generate secure passwords for all credentials, use AKS (not Container Apps),
-> and generate infra-superset/hooks/postprovision.js. The hook must attach the
-> Kubernetes manifests to `az aks command invoke`, run Helm and kubectl inside
-> Azure, and poll the load balancer without requiring those tools on the host.
-> If a deployment step fails, inspect the relevant logs, make the smallest safe
-> correction, rerun the failed step, and record the problem and resolution in
-> issues.md. Do not print secrets.
-```
+### Step 4: Deploy
 
-The agent handles the entire deployment:
-
-1. Loads the `superset-azure` skill, then follows the Azure plugin pipeline: `azure-prepare` → `azure-validate` → `azure-deploy`
-2. Recommends AKS over Container Apps based on Superset's need for init containers, shared volumes, and ConfigMap mounting
-3. Generates Bicep (Azure's infrastructure-as-code language) and Kubernetes manifests in `infra-superset/`
-4. Updates `azure.yaml`, registers Azure providers, sets environment variables
-5. Runs `azd up`
-6. Runs `infra-superset/hooks/postprovision.js`, a cross-platform Node.js hook that securely generates and persists missing `SUPERSET_SECRET_KEY` and `SUPERSET_ADMIN_PASSWORD` values. The hook uses `az aks command invoke` to run Helm and `kubectl` inside Azure, applies the Kubernetes manifests, and waits for the external IP. Existing secret values are reused and never printed.
-
-> ⏳ **While you wait:** This deployment can take a while because AKS cluster creation alone takes several minutes. Use that time to connect the architecture to the resources being created:
->
-> 1. Watch your resources appear in real-time. Open the [Azure Portal](https://portal.azure.com) → search for your resource group, or run `az resource list --resource-group rg-<env-name> --output table` in a separate terminal.
-> 2. Read the [init container pattern](#psycopg2-installation-critical) below. Why can't you just `pip install psycopg2-binary` in the main container? (Hint: read-only filesystem.)
-> 3. **Compare costs:** This AKS deployment costs ~$200/month, compared with ~$25 for n8n and ~$10 for Grafana. Review the [Cost Breakdown](#cost-breakdown) and decide when AKS-specific capabilities justify the premium.
-> 4. Explore Superset's [creating your first dashboard guide](https://superset.apache.org/user-docs/using-superset/creating-your-first-dashboard) to see what you can build after deployment.
-
-You can ask follow-up questions anytime:
-
-```
-> Why do you need an init container for psycopg2?
-> Why AKS instead of Container Apps?
-```
-
-### Step 3: Verify
-
-Ask the agent to check the pod state, PostgreSQL evidence, health endpoint, and logs through Azure run command:
+Run the deployment yourself from the repository root:
 
 ```text
-> Verify the Superset deployment. Report each acceptance criterion as pass or fail.
+azd up
 ```
 
-Run the checked-in verifier from the `journeys/superset` directory on the host machine:
+> ⏳ **While you wait:** Creating the AKS cluster alone takes several minutes. Look again at the [Superset pod](#why-aks-instead-of-container-apps) picture: why can't the main container just run `pip install psycopg2-binary`? (Hint: read-only filesystem.)
+
+**🧪 Try it while you wait: fork the conversation.** In Copilot, run `/fork` to copy this session into a new one, and ask the fork: *"How would this Superset setup run on Container Apps instead, and what would I give up?"* The original session keeps its context untouched, so exploring a what-if costs you nothing. Switch back with `/resume` when the deployment finishes.
+
+### Step 5: Verify
+
+Run the checked-in verifier from the `journeys/superset` directory:
 
 ```text
 node ../../.github/scripts/verify-superset.mjs
 ```
 
-The verifier must print six `PASS` checks and `6/6 checks passed`. Browser login is a separate check in Step 4.
+It must print six `PASS` checks and `6/6 checks passed`. Then have the agent check the rest of the acceptance criteria:
 
-If verification fails, report the failed criterion, exact command, redacted error output, and last successful step in the same agent session:
-
-```
-> My Superset pod is stuck in Init:0/1
+```text
+> Verify the Superset deployment. Report each acceptance criterion as pass or fail.
 ```
 
-### Step 4: Open Superset
+If a pod is stuck, ask the agent: *"My Superset pod is stuck in Init:0/1. Check the init container logs and tell me what's wrong."*
+
+### Step 6: Open Superset
 
 Read the deployment URL and admin password in a private terminal:
 
@@ -263,7 +229,7 @@ azd env get-value SUPERSET_ADMIN_PASSWORD
 
 Do not paste the password into the agent session or shared logs. Open the URL and sign in with username `admin`.
 
-Automated browser verification must target `#username`, `#password`, and `input[type="submit"], button[type="submit"]`. After signing in, confirm that the browser reaches `/superset/welcome/` and displays the Superset home page.
+You should land on the Superset home page (`/superset/welcome/`). To build your first chart, follow Superset's [creating your first dashboard](https://superset.apache.org/user-docs/using-superset/creating-your-first-dashboard) guide.
 
 ---
 
@@ -425,6 +391,19 @@ That log pattern points to a missing psycopg2 installation or `PYTHONPATH` setti
 **Cause:** Superset doesn't read env vars directly. It needs `superset_config.py`.
 
 **Fix:** Create a ConfigMap with `superset_config.py` that reads `os.environ.get('SQLALCHEMY_DATABASE_URI')`, mount it, and set `SUPERSET_CONFIG_PATH`.
+
+### `az aks command invoke` fails with "Operation returned an invalid status 'OK'"
+
+**Cause:** The AKS run-command pod couldn't be scheduled, almost always because the cluster has one node and Superset and the ingress controller already use its CPU. The CLI hides the real reason.
+
+**Fix:** Ask the agent to set the node pool to two nodes in `infra-superset/` and scale the running cluster to match, then rerun the hook:
+
+```
+> az aks command invoke fails with "invalid status 'OK'". Check whether the
+  run-command pod is unschedulable, set the AKS node pool to two nodes in
+  the Bicep, scale the running cluster to two nodes, and rerun
+  node infra-superset/hooks/postprovision.js.
+```
 
 ### Pod Stuck in Init:0/1
 

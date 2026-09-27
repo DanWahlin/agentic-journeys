@@ -6,15 +6,14 @@
   <img src="./images/n8n-workflow-automation.webp" alt="n8n: Workflow Automation on Azure" width="800" />
 </p>
 
-In this journey, you'll deploy [n8n](https://n8n.io), an open-source, self-hosted workflow automation tool, to Azure Container Apps with PostgreSQL. An AI agent generates the Bicep infrastructure, configures the health probes, and runs the deployment.
+In this journey, you'll deploy [n8n](https://n8n.io), an open-source, self-hosted workflow automation tool, to Azure Container Apps with PostgreSQL. An AI agent plans and generates the infrastructure, you deploy it, and then the agent builds a workflow that runs on it.
 
 ## Learning Objectives
 
-- Use the `oss-to-azure-deployer` agent with GitHub Copilot to generate Azure infrastructure through conversation
-- Understand how the agent loads app-specific and generic skills to build Bicep templates
-- Deploy n8n to Azure Container Apps with PostgreSQL using `azd up`
-- Configure health probes for slow-starting containers
-- Troubleshoot common deployment issues using Azure MCP (Model Context Protocol) tools and container logs
+- Plan and cost a deployment with the `oss-to-azure-deployer` agent, preview it, then run `azd up` yourself
+- See how the agent combines app-specific and Azure skills to generate Bicep
+- Configure health probes for a slow-starting container, and set a URL that only exists after deployment
+- Have the agent build an n8n workflow while the deployment runs, then run it through the n8n API
 
 > 💰 **Estimated Cost**: ~$25–35/month while the resources exist (see [Cost Breakdown](#cost-breakdown)). Complete the [Cleanup](#cleanup) procedure when you finish the journey.
 
@@ -31,17 +30,12 @@ This journey supports Windows PowerShell, Mac, and Linux.
 
 The signed-in Azure account must have permission to create Container Apps, PostgreSQL Flexible Server, Log Analytics, and managed identity resources.
 
-Run these read-only checks on the host machine before you create Azure resources:
+**Before you start:**
 
-```text
-az version
-az account show --output table
-azd version
-node --version
-copilot --version
-```
-
-Confirm that `az account show` identifies the intended subscription, `azd` is version 1.28.0 or later, and Node.js is a currently supported LTS release. Stop and fix the prerequisite if a command fails or a required version is too old. See the [cross-platform installation guide](../../docs/tool-installation.md) for Windows, Mac, and Linux installation instructions.
+1. Run each command in the Validation column, and install anything that fails. The [cross-platform installation guide](../../docs/tool-installation.md) has Windows, Mac, and Linux options.
+2. Confirm that `az account show --output table` shows the subscription you intend to use.
+3. Run `azd config set auth.useAzCliAuth true`, so `azd` reuses your Azure CLI sign-in.
+4. Inside `copilot`, install the Azure Skills plugin once: `/plugin marketplace add microsoft/azure-skills`, then `/plugin install azure@azure-skills`.
 
 > [!NOTE]
 > GitHub Copilot CLI is the documented and validated command-line path. You may adapt the deployment prompt for the GitHub Copilot app, VS Code agent chat, or another agentic coding tool. For another tool, run: **"Copy or adapt this repository's `.github/skills` into your supported skills or instructions location, preserving their behavior and reporting anything unsupported."**
@@ -96,143 +90,161 @@ graph TB
 
 ## Deploy with the Agent
 
-You'll use `oss-to-azure-deployer` (a custom agent defined in this repo) with GitHub Copilot to generate and deploy the entire infrastructure through conversation.
+<details>
+<summary><strong>When something fails</strong></summary>
 
-> **💡 Tip: Track issues as you go.** Add *"If you encounter any issues, log them to issues.md so they can be tracked and fixed"* to your prompt. This keeps generation and deployment problems in one place while you iterate.
+AI-generated infrastructure isn't deterministic, so expect an occasional failure. Stay in the same Copilot session, remove passwords, tokens, keys, and connection strings from the output, and use this prompt:
 
-> [!IMPORTANT]
-> **When something fails**
-> These journeys are designed to provide a solid starting point, but you may encounter errors along the way due to the non-deterministic nature of AI code generation. If a command or process fails, follow these steps to get help:
->
-> 1. Stay in the same AI coding session so it retains the journey context.
-> 2. Paste the exact command and relevant error output. Don't paraphrase the error.
-> 3. Include your operating system, shell, current phase, and last successful step.
-> 4. Remove passwords, tokens, connection strings, keys, cookies, and `.env` values before pasting.
-> 5. Ask the agent to inspect the relevant application and Azure logs, explain the root cause, make the smallest safe fix, rerun the failed step, and run the journey verifier.
-> 6. Record the problem and resolution in `issues.md`.
->
-> Use this prompt:
->
-> ```text
-> The following command failed during <journey phase> on <OS and shell>:
->
-> <exact command>
->
-> Relevant error output:
->
-> <redacted error output>
->
-> Inspect the relevant application and Azure logs, explain the root cause,
-> make the smallest safe fix, rerun the failed step, and run the journey
-> verifier. Record the issue and resolution in issues.md. Do not print secrets.
-> ```
+```text
+The following command failed during <journey phase> on <OS and shell>:
+
+<exact command>
+
+Relevant error output:
+
+<redacted error output>
+
+Inspect the relevant application and Azure logs, explain the root cause,
+make the smallest safe fix, rerun the failed step, and run the journey
+verifier. Record the issue and resolution in issues.md. Do not print secrets.
+```
+
+</details>
 
 ### Step 1: Setup
 
-Run the following steps from the repository root. If you're in the parent directory that contains the clone, enter it first:
-
-```text
-cd agentic-journeys
-```
-
-Configure `azd` to reuse the signed-in Azure CLI session:
-
-```text
-azd config set auth.useAzCliAuth true
-```
-
-The command must exit successfully.
-
-Start the [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started):
+From the repository root (run `cd agentic-journeys` if you're one level up), start [GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/cli-getting-started) and select the deployment agent:
 
 ```text
 copilot
 ```
 
-If you haven't installed the Azure Skills plugin yet, do it now. This one-time setup adds deployment tools, Bicep schema lookups, and infrastructure generation; see the root [Quick Start](../../README.md#quick-start) for details.
-
-```
-> /plugin marketplace add microsoft/azure-skills
-> /plugin install azure@azure-skills
-```
-
-Now select the deployment agent. Agents are specialized personas that know how to handle specific tasks:
-
 ```
 > /agent
 ```
 
-Select **`oss-to-azure-deployer`** from the list. You're now in an interactive session with the deployment agent.
+Choose **`oss-to-azure-deployer`**, a custom agent defined in this repository that knows how to deploy open-source apps to Azure. Every prompt below goes to this agent, in this one session.
 
-### Step 2: Deploy
+### Step 2: Plan the deployment
+
+Before anything is created, ask for the plan and what it costs. This is read-only:
+
+```
+> Plan an n8n deployment to Azure Container Apps with Bicep and azd:
+  PostgreSQL Flexible Server for storage, /healthz for probes, and the
+  westus region. List each Azure resource, its SKU, and the estimated
+  monthly cost if left running. Don't create files or Azure resources yet.
+```
+
+Check the plan against the [architecture](#architecture): a Container App, PostgreSQL Flexible Server, and Log Analytics (a managed identity is optional). PostgreSQL is most of the cost.
+
+### Step 3: Generate and preview
+
+```
+> Generate the infrastructure for that plan: Bicep in infra-n8n/,
+  azure.yaml, and the post-provision hook that sets WEBHOOK_URL. Generate
+  secure passwords for all credentials and store them only in the azd
+  environment. Set the Container App minReplicas to 1 so I can verify it
+  right away without a cold start, and use n8n's /healthz endpoint for
+  startup, readiness, and liveness probes. Prepare the azd environment for
+  westus and my current subscription, then run azd provision --preview and
+  summarize what it will create. Don't run azd up. If a step fails, inspect
+  the relevant logs, make the smallest safe correction, rerun the failed
+  step, and record the problem and resolution in issues.md. Do not print
+  secrets.
+```
 
 <p align="center">
-  <img src="./images/azure-deployment.webp" alt="Deploy n8n to Azure" width="800" />
+  <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, then azd up deploys it and the verifier checks the result" width="800" />
 </p>
 
-Give the agent one prompt that covers the location, secrets, health probes, and issue handling:
+The agent loads the `n8n-azure` and `container-apps-deployment` skills, uses Azure MCP tools for current Bicep schemas, and generates `infra-n8n/`. Two details make n8n harder than Grafana.
+
+**The probes.** n8n takes more than a minute to start. A default probe gives up sooner and restarts the container in a loop, so the agent sets a five-minute startup window instead (10 tries, 30 seconds apart).
+
+<p align="center">
+  <img src="./images/startup-window.webp" alt="Why n8n needs a 5-minute startup window: a default probe kills the container too early, while the startup probe checks /healthz every 30 seconds up to 10 times, and n8n becomes ready after 60 or more seconds" width="750" />
+</p>
+
+**The webhook URL.** One setting can't be written up front:
+
+<p align="center">
+  <img src="./images/webhook-url.webp" alt="Setting WEBHOOK_URL after deploy: azd up runs and the URL is assigned (the URL only exists after deployment), then the post-provision hook sets WEBHOOK_URL, a new revision starts, and the hook waits for six healthy checks" width="800" />
+</p>
+
+The post-provision hook, `infra-n8n/hooks/postprovision.js`, sets `WEBHOOK_URL` once the URL exists. That starts a new Container App revision, so the hook waits until `/healthz` and `/` return HTTP 200 six times in a row over 30 seconds. Compare the preview with the plan from Step 2. If the preview shows anything the plan didn't, ask the agent why before you deploy.
+
+### Step 4: Deploy, and build a workflow while it runs
+
+Deploying is the consequential step, so run it yourself from the repository root, in a second terminal:
+
+```text
+azd up
+```
+
+Don't start verification until `azd up` and the hook have both finished. The deployment takes several minutes, so put the time to use. In the Copilot session, have the agent build the automation you'll run in Step 6:
 
 ```
-> Deploy n8n to Azure using Bicep and azd. Set the location to westus,
-  generate secure passwords for all credentials, set the Container App
-  minReplicas to 1 so I can verify it right away without a cold start,
-  and use n8n's /healthz endpoint for startup/readiness/liveness probes.
-  If a deployment step fails, inspect the relevant logs, make the smallest
-  safe correction, rerun the failed step, and record the problem and
-  resolution in issues.md. Do not print secrets.
+> My azd up is running in another terminal, so don't run azd or any
+  deployment command. Meanwhile, create n8n-workflows/github-zen.json: an
+  n8n workflow named "GitHub Zen" with a Webhook trigger (POST, path
+  github-zen), an HTTP Request node that calls https://api.github.com/zen,
+  and a Respond to Webhook node that returns that text. Then create
+  scripts/run-n8n-workflow.mjs. It reads N8N_URL through azd env get-value
+  with an argument array and an API key from the N8N_API_KEY environment
+  variable, and never prints the key. Through the n8n public API, it creates
+  the workflow (or updates the one with the same name), activates it, calls
+  its production webhook URL, and prints the response. Don't run it yet.
 ```
 
-The agent handles the entire deployment:
-
-1. Loads the `n8n-azure` and `container-apps-deployment` skills, then follows the Azure plugin pipeline: `azure-prepare` → `azure-validate` → `azure-deploy`
-2. Uses Azure MCP tools to look up Bicep schemas and best practices
-3. Generates modular Bicep infrastructure in `infra-n8n/`
-4. Updates `azure.yaml`, registers Azure providers, sets environment variables
-5. Runs `azd up`
-6. Configures `WEBHOOK_URL` with `infra-n8n/hooks/postprovision.js`, referenced directly from `azure.yaml`. This cross-platform Node.js hook avoids interpolated shell commands and uses the static PowerShell JSON-payload launcher only when Windows must resolve Azure CLI shims. Because the update creates a replacement Container App revision, the hook must not exit until both `/healthz` and `/` return HTTP 200 for six consecutive probes over 30 seconds.
-
-Do not start verification until `azd up` and the `postprovision` hook exit successfully.
-
-The deployment takes several minutes. You'll see the agent generating Bicep files, registering Azure providers, and running `azd up`. It may prompt you to confirm your Azure subscription.
-
-> ⏳ **While you wait:** Use the deployment time to connect the generated resources to the architecture:
->
-> 1. Watch your resources appear in real-time. Open the [Azure Portal](https://portal.azure.com) → search for your resource group (`rg-<env-name>`), or run `az resource list --resource-group rg-<env-name> --output table` in a separate terminal.
-> 2. Look at the [architecture diagram](#architecture) above. Match each box to a resource appearing in the portal.
-> 3. Ask the agent: *"What's happening right now? Walk me through the deployment step by step."*
-> 4. **Quiz yourself:** Why does n8n need an approximately five-minute startup window (`failureThreshold: 10` with `periodSeconds: 30`)? (Hint: expand the collapsed **Configuration Reference** section below and check the Health Probes table.)
-> 5. Browse the [n8n workflow templates](https://n8n.io/workflows/) and pick one you want to try after deployment.
-
-You can ask follow-up questions anytime during or after generation:
+You can ask follow-up questions while you wait:
 
 ```
 > Why does the liveness probe have a 60-second initial delay?
 > What does the post-provision hook do?
 ```
 
-### Step 3: Verify
+### Step 5: Verify
 
-Ask the agent to check the health endpoint, `WEBHOOK_URL`, and Container App logs:
-
-```text
-> Verify the n8n deployment. Report each acceptance criterion as pass or fail.
-```
-
-Run the checked-in verifier from the repository root on the host machine:
+Run the checked-in verifier from the repository root:
 
 ```text
 node .github/scripts/verify-n8n.mjs
 ```
 
-The verifier must print `PASS: /healthz and UI returned HTTP 200` and the deployed n8n URL. Open that URL in a browser and confirm that the rendered page shows either **Set up owner account** or the normal login page. HTTP 401 is not a successful UI check.
+It must print `PASS: /healthz and UI returned HTTP 200` and the n8n URL. Then have the agent check the rest of the acceptance criteria, including `WEBHOOK_URL`:
 
-If verification fails, report the failed criterion, exact command, redacted error output, and last successful step in the same agent session:
-
-```
-> The container is in CrashLoopBackOff, what's happening?
+```text
+> Verify the n8n deployment. Report each acceptance criterion as pass or fail.
 ```
 
-For a more detailed checklist, see the troubleshooting section.
+Open the URL and confirm that you see **Set up owner account** (HTTP 401 isn't a pass). If the container keeps restarting, ask the agent: *"The container is in CrashLoopBackOff. Check the logs and tell me what's wrong."*
+
+### Step 6: Run the workflow Copilot built
+
+1. Open the n8n URL from the verifier and complete **Set up owner account**.
+2. In n8n, open **Settings** → **n8n API**, create an API key, and copy it.
+3. Put the key in an environment variable in the terminal where you'll run the script. It stays out of the Copilot session and out of files:
+
+   ```powershell
+   $env:N8N_API_KEY = "<your-api-key>"
+   ```
+
+   On Mac or Linux:
+
+   ```bash
+   export N8N_API_KEY=<your-api-key>
+   ```
+
+4. From the repository root, run:
+
+   ```text
+   node scripts/run-n8n-workflow.mjs
+   ```
+
+It prints a line of GitHub Zen. Open **Workflows** in n8n to see the workflow the agent built, and its executions.
+
+**💡 What you're learning:** The production webhook URL comes from `WEBHOOK_URL`, so this call working end to end proves the post-provision hook did its job. You also just split the work: `azd up` ran in one terminal while the agent wrote the automation in another.
 
 ---
 
@@ -396,7 +408,7 @@ param n8nEncryptionKey string = newGuid()
 ## Assignment
 
 1. Ask the agent: *"How would I add a custom domain to my n8n deployment?"*
-2. Create a simple workflow in n8n: add an HTTP Request node that calls `https://api.github.com/zen`, connect it to a Set node, and run it. This confirms your deployed n8n instance can make outbound API calls.
+2. Ask Copilot to extend `n8n-workflows/github-zen.json` with a Set node that adds the current time to the response, then rerun `node scripts/run-n8n-workflow.mjs` and open the new execution in n8n.
 3. When you're done, continue to Cleanup below.
 
 ---
@@ -429,6 +441,8 @@ The command must return `false`.
 ---
 
 ## What's Next
+
+**Take it home:** the same agent deploys other open-source apps. Ask `@oss-to-azure-deployer` *"How would I deploy Uptime Kuma to Azure?"* and compare its plan with this one.
 
 Explore the other journeys:
 
