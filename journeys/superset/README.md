@@ -13,6 +13,7 @@
 ## Learning Objectives
 
 - Understand when AKS is required instead of Container Apps
+- Review a deployment's plan and cost with an agent before paying for it, then run `azd up` yourself
 - Deploy Superset with init containers, shared volumes, and a mounted ConfigMap (a Kubernetes object that stores configuration files)
 - Install psycopg2-binary into a shared emptyDir (a temporary shared volume that both containers can access) for PostgreSQL connectivity
 - Use `azure_deploy_plan` with `target=AKS` for Kubernetes deployment planning
@@ -163,26 +164,49 @@ Now select the deployment agent. Agents are specialized personas that know how t
 
 Select **`oss-to-azure-deployer`** from the list. You're now in an interactive session with the deployment agent.
 
-### Step 2: Deploy
+### Step 2: Plan the deployment and its cost
 
-Give the agent one prompt that covers the location, secrets, target platform, and issue handling:
+This is the most expensive journey, so decide with the numbers in front of you. The plan is read-only:
 
 ```
-> Deploy Apache Superset to Azure using Bicep and azd. Set the location to westus,
-> generate secure passwords for all credentials, use AKS (not Container Apps),
-> and generate infra-superset/hooks/postprovision.js. The hook must attach the
-> Kubernetes manifests to `az aks command invoke`, run Helm and kubectl inside
-> Azure, and poll the load balancer without requiring those tools on the host.
-> If a deployment step fails, inspect the relevant logs, make the smallest safe
-> correction, rerun the failed step, and record the problem and resolution in
-> issues.md. Do not print secrets.
+> Plan an Apache Superset deployment to Azure with Bicep and azd, using
+  AKS with two Standard_D2s_v3 nodes (not Container Apps), Azure Database
+  for PostgreSQL Flexible Server, and the westus region. List each Azure resource, its SKU, and the
+  estimated monthly cost if left running, and explain why this workload
+  uses AKS. Don't create files or Azure resources yet.
+```
+
+Expect about $200 a month, most of it the two AKS nodes, and an explanation that matches [Why AKS](#why-aks-instead-of-container-apps). Don't trade down to one node to save money: Superset, the ingress controller, and the AKS run-command pod don't fit on one. If you only want to see the result, stop here: nothing has been created.
+
+### Step 3: Generate and preview
+
+```
+> Generate the infrastructure for that plan: Bicep and Kubernetes manifests
+> in infra-superset/, azure.yaml, and infra-superset/hooks/postprovision.js.
+> Generate secure passwords for all credentials and store them only in the
+> azd environment. The hook must attach the Kubernetes manifests to
+> `az aks command invoke`, run Helm and kubectl inside Azure, and poll the
+> load balancer without requiring those tools on the host. Prepare the azd
+> environment for westus and my current subscription, then run
+> azd provision --preview and summarize what it will create. Don't run
+> azd up. If a step fails, inspect the relevant logs, make the smallest safe
+> correction, rerun the failed step, and record the problem and resolution
+> in issues.md. Do not print secrets.
 ```
 
 <p align="center">
   <img src="./images/deploy-agent.webp" alt="How the deploy agent works: your prompt goes to the oss-to-azure-deployer agent, which loads the app skill and Azure Skills (with Azure MCP schemas and guidance), generates Bicep and azure.yaml, runs azd up, and the verifier checks the result" width="800" />
 </p>
 
-The agent loads the `superset-azure` skill, generates Bicep and Kubernetes manifests in `infra-superset/`, and runs `azd up`. Its post-provision hook then creates `SUPERSET_SECRET_KEY` and `SUPERSET_ADMIN_PASSWORD` if they're missing (reusing existing values and never printing them), runs Helm and `kubectl` inside Azure through `az aks command invoke`, applies the manifests, and waits for the external IP.
+The agent loads the `superset-azure` skill and generates Bicep and Kubernetes manifests in `infra-superset/`. When you deploy, its post-provision hook creates `SUPERSET_SECRET_KEY` and `SUPERSET_ADMIN_PASSWORD` if they're missing (reusing existing values and never printing them), runs Helm and `kubectl` inside Azure through `az aks command invoke`, applies the manifests, and waits for the external IP. Compare the preview with the plan from Step 2 before you continue.
+
+### Step 4: Deploy
+
+Run the deployment yourself from the repository root:
+
+```text
+azd up
+```
 
 > ⏳ **While you wait:** This deployment can take a while because AKS cluster creation alone takes several minutes. Use that time to connect the architecture to the resources being created:
 >
@@ -191,6 +215,8 @@ The agent loads the `superset-azure` skill, generates Bicep and Kubernetes manif
 > 3. **Compare costs:** This AKS deployment costs ~$200/month, compared with ~$25 for n8n and ~$10 for Grafana. Review the [Cost Breakdown](#cost-breakdown) and decide when AKS-specific capabilities justify the premium.
 > 4. Explore Superset's [creating your first dashboard guide](https://superset.apache.org/user-docs/using-superset/creating-your-first-dashboard) to see what you can build after deployment.
 
+**🧪 Try it while you wait: fork the conversation.** In Copilot, run `/fork` to copy this session into a new one, and ask the fork: *"How would this Superset setup run on Container Apps instead, and what would I give up?"* The original session keeps its context untouched, so exploring a what-if costs you nothing. Switch back with `/resume` when the deployment finishes.
+
 You can ask follow-up questions anytime:
 
 ```
@@ -198,7 +224,7 @@ You can ask follow-up questions anytime:
 > Why AKS instead of Container Apps?
 ```
 
-### Step 3: Verify
+### Step 5: Verify
 
 Ask the agent to check the pod state, PostgreSQL evidence, health endpoint, and logs through Azure run command:
 
@@ -212,7 +238,7 @@ Run the checked-in verifier from the `journeys/superset` directory on the host m
 node ../../.github/scripts/verify-superset.mjs
 ```
 
-The verifier must print six `PASS` checks and `6/6 checks passed`. Browser login is a separate check in Step 4.
+The verifier must print six `PASS` checks and `6/6 checks passed`. Browser login is a separate check in Step 6.
 
 If verification fails, report the failed criterion, exact command, redacted error output, and last successful step in the same agent session:
 
@@ -220,7 +246,7 @@ If verification fails, report the failed criterion, exact command, redacted erro
 > My Superset pod is stuck in Init:0/1
 ```
 
-### Step 4: Open Superset
+### Step 6: Open Superset
 
 Read the deployment URL and admin password in a private terminal:
 
@@ -393,6 +419,19 @@ That log pattern points to a missing psycopg2 installation or `PYTHONPATH` setti
 **Cause:** Superset doesn't read env vars directly. It needs `superset_config.py`.
 
 **Fix:** Create a ConfigMap with `superset_config.py` that reads `os.environ.get('SQLALCHEMY_DATABASE_URI')`, mount it, and set `SUPERSET_CONFIG_PATH`.
+
+### `az aks command invoke` fails with "Operation returned an invalid status 'OK'"
+
+**Cause:** The AKS run-command pod couldn't be scheduled, almost always because the cluster has one node and Superset and the ingress controller already use its CPU. The CLI hides the real reason.
+
+**Fix:** Ask the agent to set the node pool to two nodes in `infra-superset/` and scale the running cluster to match, then rerun the hook:
+
+```
+> az aks command invoke fails with "invalid status 'OK'". Check whether the
+  run-command pod is unschedulable, set the AKS node pool to two nodes in
+  the Bicep, scale the running cluster to two nodes, and rerun
+  node infra-superset/hooks/postprovision.js.
+```
 
 ### Pod Stuck in Init:0/1
 

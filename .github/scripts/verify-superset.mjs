@@ -44,7 +44,11 @@ function run(cmd, args) {
 
 function azdEnv() {
   const res = run('azd', ['env', 'get-values', '--output', 'json']);
-  return JSON.parse(res.stdout);
+  const env = JSON.parse(res.stdout);
+  // Accept the common alternate output names so a naming difference doesn't fail verification.
+  env.AZURE_RESOURCE_GROUP ||= env.AZURE_RESOURCE_GROUP_NAME || env.RESOURCE_GROUP_NAME;
+  env.AZURE_AKS_CLUSTER_NAME ||= env.AKS_CLUSTER_NAME;
+  return env;
 }
 
 function aksCommand(env, command) {

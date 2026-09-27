@@ -13,7 +13,7 @@ Deploy Apache Superset data visualization platform on Azure Kubernetes Service.
 
 Require Azure CLI, Azure Developer CLI 1.28.0 or later, and Node.js LTS or later. Verify `az version`, `azd version`, and `node --version` before generating infrastructure. The host must not need `kubectl` or Helm. Installation options for Windows, Mac, and Linux are in `../../../docs/tool-installation.md`.
 
-Generate the AKS post-provision workflow as `infra-superset/hooks/postprovision.js` and reference it directly from `azure.yaml`. The hook must attach the Kubernetes manifests and a remote deployment script to `az aks command invoke`. Run Helm and `kubectl` inside Azure. Invoke `az` and `azd` with argument arrays. On Mac and Linux, call each executable directly. On Windows, use the static PowerShell runner and JSON environment payload defined by the `container-apps-deployment` skill so Azure CLI `.cmd` shims aren't launched directly. Reject double quotes for every Windows target and additional shell metacharacters or CR/LF for `.cmd`/`.bat`; use attached scripts for complex remote commands. Do not generate a Bash-only host hook.
+Generate the AKS post-provision workflow as `infra-superset/hooks/postprovision.js` and reference it directly from `azure.yaml`. The hook must attach the Kubernetes manifests and a remote deployment script to `az aks command invoke`. Run Helm and `kubectl` inside Azure. Invoke `az` and `azd` with argument arrays. On Mac and Linux, call each executable directly. On Windows, use the static PowerShell runner and JSON environment payload defined by the `container-apps-deployment` skill so Azure CLI `.cmd` shims aren't launched directly. Reject double quotes for every Windows target and additional shell metacharacters or CR/LF for `.cmd`/`.bat`; use attached scripts for complex remote commands. Do not generate a Bash-only host hook. Attach each file with its own `--file` flag (`--file deployment.yaml --file ingress.yaml`), or copy them into one folder and pass `--file .` with that folder as the working directory. Several paths after a single `--file` fail with `unrecognized arguments`. Call `az aks command invoke` synchronously (without `--no-wait`) and read `exitCode` and `logs` from its JSON output. With `--no-wait`, both `invoke` and `az aks command result` ignore `--query` and `--output` and print plain text (`command id: <id>, ... status: Running`) until the command finishes, so a JSON parser or command-ID lookup built on them fails or loops forever. Never retry an error indefinitely: give every wait a deadline and report the last error.
 
 Start the long deployment command with `--no-wait`, parse the returned command ID, and poll `az aks command result`. Require `provisioningState` to equal `Succeeded` and `exitCode` to equal `0`. Use a separate short AKS run command to read the ingress IP so URL discovery does not depend on long-command log truncation.
 
@@ -160,6 +160,10 @@ See [config/health-probes.md](config/health-probes.md) for liveness, readiness, 
 | Superset Web | 250m | 1000m | 512Mi | 2Gi |
 | Init Container | (inherits) | (inherits) | (inherits) | (inherits) |
 
+**⚠️ Load balancer health probe:** Install ingress-nginx with `--set-string controller.service.annotations.service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path=/healthz`. Without it, the Azure load balancer probes `/`, gets a 404, marks every node unhealthy, and requests to the public IP time out even though the ingress works inside the cluster.
+
+**⚠️ Node count:** Use two `Standard_D2s_v3` nodes (`count: 2`), even though one node looks cheaper in a cost estimate. On one node, Superset, the NGINX ingress, and the AKS run-command pod don't fit: the run-command pod stays unschedulable (`Insufficient cpu`), and `az aks command invoke` fails with the misleading `Operation returned an invalid status 'OK'`.
+
 **⚠️ CPU Gotcha:** Standard_DS2_v2 (2 vCPU) only has ~500m available after AKS system pods. Set CPU **request** to 250m (not 500m) or the pod will be stuck in `Pending` with "Insufficient cpu". CPU **limit** can stay at 1000m for bursting.
 
 ## Common Issues & Solutions
@@ -215,6 +219,6 @@ After deployment completes, run the checked-in verifier from `journeys/superset`
 node ../../.github/scripts/verify-superset.mjs
 ```
 
-The verifier must use `az aks command invoke` for pod status, logs, and in-pod checks. It must not invoke a local `kubectl` or Helm binary.
+Output `AZURE_RESOURCE_GROUP` and `AZURE_AKS_CLUSTER_NAME` from Bicep, and have the hook save `SUPERSET_URL` with `azd env set`; the checked-in verifier reads these names. The verifier must use `az aks command invoke` for pod status, logs, and in-pod checks. It must not invoke a local `kubectl` or Helm binary.
 
 For automated browser login, use `#username`, `#password`, and the resilient submit selector `input[type="submit"], button[type="submit"]`. Superset 4.1.1 renders a Flask-AppBuilder submit input; other versions may render a button. Verify successful navigation to `/superset/welcome/`.
