@@ -41,3 +41,7 @@ Reference in `main.parameters.json`:
 ```json
 { "postgresPassword": { "value": "${POSTGRES_PASSWORD}" } }
 ```
+
+## Raw Resource API Version
+
+If you use raw `Microsoft.DBforPostgreSQL/flexibleServers` resources instead of the AVM module, use the stable API version `2024-08-01` for the server and its `databases` and `firewallRules` children. `2023-12-01` doesn't exist for this type; `azd provision --preview` doesn't catch it, and `azd up` then fails with a misleading `NoRegisteredProviderFound` error. Confirm the current version with the Azure MCP Bicep schema tool before you generate.
