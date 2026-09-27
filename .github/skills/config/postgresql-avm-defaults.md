@@ -45,3 +45,5 @@ Reference in `main.parameters.json`:
 ## Raw Resource API Version
 
 If you use raw `Microsoft.DBforPostgreSQL/flexibleServers` resources instead of the AVM module, use the stable API version `2024-08-01` for the server and its `databases` and `firewallRules` children. `2023-12-01` doesn't exist for this type; `azd provision --preview` doesn't catch it, and `azd up` then fails with a misleading `NoRegisteredProviderFound` error. Confirm the current version with the Azure MCP Bicep schema tool before you generate.
+
+Don't set `availabilityZone` on a raw server. Zone `1` isn't available for every subscription in `westus`, and `azd provision --preview` doesn't catch it: `azd up` fails with `AvailabilityZoneNotAvailable`. Leave the property out so Azure picks a valid placement.

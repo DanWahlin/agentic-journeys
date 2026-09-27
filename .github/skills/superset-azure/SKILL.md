@@ -50,6 +50,8 @@ module aksCluster 'br/public:avm/res/container-service/managed-cluster:0.9.0' = 
 }
 ```
 
+If you add an Azure Container Registry, don't set `exportPolicy` to `disabled` while `publicNetworkAccess` is `Enabled`. Azure rejects the combination with `DisableExport_PublicNetworkAccessMustBeDisabled`, and the preview doesn't catch it.
+
 ## Quick Start (Verified)
 
 ```text

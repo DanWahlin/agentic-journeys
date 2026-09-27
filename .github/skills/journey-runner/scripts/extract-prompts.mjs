@@ -32,22 +32,30 @@ for (const line of lines) {
     if (!inFence) { inFence = true; lang = line.slice(3).trim(); buffer = []; continue; }
     inFence = false;
     if ((lang === '' || lang === 'text') && buffer[0]?.startsWith('> ')) {
-      const text = buffer.map((l) => (l.startsWith('> ') ? l.slice(2) : l.startsWith('  ') ? l.slice(2) : l)).join('\n').trim();
-      const n = String(index.length).padStart(2, '0');
-      const file = `${n}.txt`;
-      writeFileSync(join(resolve(out), file), `${text}\n`);
-      index.push({
-        n,
-        file,
-        heading,
-        firstLine: text.split('\n')[0].slice(0, 100),
-        slashCommand: /^\/\w/.test(text) ? text.split(/\s/)[0] : null,
-        placeholders: [...new Set(text.match(/<[a-z][\w -]*>|\[[A-Z][A-Z _]+\]|\[paste[^\]]*\]/gi) ?? [])],
-      });
+      // A block where every line starts with "> " holds separate one-line prompts.
+      const promptLines = buffer.filter((l) => l.trim());
+      const texts = promptLines.length > 1 && promptLines.every((l) => l.startsWith('> '))
+        ? promptLines.map((l) => l.slice(2).trim())
+        : [buffer.map((l) => (l.startsWith('> ') ? l.slice(2) : l.startsWith('  ') ? l.slice(2) : l)).join('\n').trim()];
+      for (const text of texts) addPrompt(text);
     }
     continue;
   }
   if (inFence) buffer.push(line);
+}
+
+function addPrompt(text) {
+  const n = String(index.length).padStart(2, '0');
+  const file = `${n}.txt`;
+  writeFileSync(join(resolve(out), file), `${text}\n`);
+  index.push({
+    n,
+    file,
+    heading,
+    firstLine: text.split('\n')[0].slice(0, 100),
+    slashCommand: /^\/\w/.test(text) ? text.split(/\s/)[0] : null,
+    placeholders: [...new Set(text.match(/<[a-z][\w -]*>|\[[A-Z][A-Z _]+\]|\[paste[^\]]*\]/gi) ?? [])],
+  });
 }
 writeFileSync(join(resolve(out), 'index.json'), `${JSON.stringify(index, null, 2)}\n`);
 for (const p of index) {

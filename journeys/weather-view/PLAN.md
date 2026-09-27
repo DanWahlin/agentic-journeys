@@ -41,7 +41,7 @@ weather-view/
 └── azure.yaml
 ```
 
-Keep application modules at the journey root so they deploy directly as static assets. Generated dependencies and deployment state (`node_modules/`, `test-results/`, `playwright-report/`, `.azure/`) must be ignored by Git.
+Keep application modules at the journey root so they deploy directly as static assets. Don't edit `README.md`: it's the journey's tutorial, not project documentation. Generated dependencies and deployment state (`node_modules/`, `test-results/`, `playwright-report/`, `.azure/`) must be ignored by Git.
 
 ---
 
@@ -305,14 +305,14 @@ infra:
   path: ./infra
 ```
 
-Declare exactly one azd service, named `web`, as shown. Azure Developer CLI cannot publish a Static Web App when both its service source and output folder resolve to the project root. Generate `scripts/build-static.mjs`, set `dist: dist`, and add an npm `build` script. The build script must recreate `dist/` and copy only `index.html`, `styles.css`, `app.js`, `weather-api.js`, `weather-maps.js`, and `staticwebapp.config.json`. It must not copy tests, scripts, dependencies, `.azure`, documentation, package files, or infrastructure. Add `dist/` to `.gitignore`, run the build before deployment, and inspect the exact output list.
+Declare exactly one azd service, named `web`, as shown. Azure Developer CLI cannot publish a Static Web App when both its service source and output folder resolve to the project root. Generate `scripts/build-static.mjs`, set `dist: dist`, and add an npm `build` script. The build script must recreate `dist/` and copy only `index.html`, `styles.css`, `app.js`, `weather-api.js`, `weather-maps.js`, `staticwebapp.config.json`, and `theme-bootstrap.js` when it exists. It must not copy tests, scripts, dependencies, `.azure`, documentation, package files, or infrastructure. Add `dist/` to `.gitignore`, run the build before deployment, and inspect the exact output list.
 
 ### Static Web Apps Configuration
 
 Create `staticwebapp.config.json` with:
 
 - A navigation fallback to `/index.html` that excludes static files (`*.css`, `*.js`, icons, and common image extensions).
-- Security headers including `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a practical Content Security Policy allowing only self plus the two required Open-Meteo HTTPS origins for `connect-src`.
+- Security headers including `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, and a practical Content Security Policy allowing only self plus the two required Open-Meteo HTTPS origins for `connect-src`. Don't use inline scripts: `script-src 'self'` blocks them, and the error only appears in the deployed browser console. If the theme needs a script that runs before first paint, put it in `theme-bootstrap.js` and add that file to the build.
 - No blanket caching rule for `index.html`; hashed assets are optional for this small journey.
 
 ### Deployment Flow

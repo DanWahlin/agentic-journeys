@@ -172,16 +172,16 @@ Expect about $200 a month, most of it the two AKS nodes, and an explanation that
 
 ```
 > Generate the infrastructure for that plan: Bicep and Kubernetes manifests
-> in infra-superset/, azure.yaml, and infra-superset/hooks/postprovision.js.
-> Generate secure passwords for all credentials and store them only in the
-> azd environment. The hook must attach the Kubernetes manifests to
-> `az aks command invoke`, run Helm and kubectl inside Azure, and poll the
-> load balancer without requiring those tools on the host. Prepare the azd
-> environment for westus and my current subscription, then run
-> azd provision --preview and summarize what it will create. Don't run
-> azd up. If a step fails, inspect the relevant logs, make the smallest safe
-> correction, rerun the failed step, and record the problem and resolution
-> in issues.md. Do not print secrets.
+  in infra-superset/, azure.yaml, and infra-superset/hooks/postprovision.js.
+  Generate secure passwords for all credentials and store them only in the
+  azd environment. The hook must attach the Kubernetes manifests to
+  `az aks command invoke`, run Helm and kubectl inside Azure, and poll the
+  load balancer without requiring those tools on the host. Prepare the azd
+  environment for westus and my current subscription, then run
+  azd provision --preview and summarize what it will create. Don't run
+  azd up. If a step fails, inspect the relevant logs, make the smallest safe
+  correction, rerun the failed step, and record the problem and resolution
+  in issues.md. Do not print secrets.
 ```
 
 <p align="center">

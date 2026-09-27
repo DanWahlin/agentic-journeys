@@ -434,7 +434,7 @@ Use Playwright to turn the browser checklist into repeatable end-to-end tests.
   - adding 2 items updates the cart badge, quantities, and total
   - placing an order displays a confirmation containing an order ID
   Use accessible locators instead of fixed delays, keep test data predictable,
-  and add a test:e2e script. Document how to install Playwright Chromium and
+  and add a test:e2e script. Tell me how to install Playwright Chromium and
   run the tests on Windows PowerShell, Mac, and Linux.
 ```
 
@@ -700,7 +700,12 @@ With both features on `main`, review the whole application once before you gener
   security, or reliability issues.
 ```
 
-Address any high-confidence correctness, security, or reliability findings before continuing.
+Read the findings, then have the agent fix the ones that matter before you deploy:
+
+```
+> Fix the high-confidence correctness, security, and reliability findings
+  from that review, then rerun the API build and the Playwright tests.
+```
 
 > **💡 Get multiple perspectives:** Run `/rubber-duck` with the same review request against multiple models. Compare their findings and act on issues that are specific, reproducible, and relevant to the [`PLAN.md` overview](./PLAN.md) and the four linked phase plans above.
 
