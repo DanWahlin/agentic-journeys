@@ -271,10 +271,12 @@ Run the app and check the local acceptance criteria manually. Search for your ci
 Agents make changes you won't always want to keep. Ask for one on purpose:
 
 ```
-> Replace the five forecast cards with a single horizontal carousel.
+> Replace the five forecast cards with a single horizontal carousel that
+  shows one day at a time. This is a throwaway experiment that I'll undo, so
+  don't change PLAN.md and don't ask me questions; just make the change.
 ```
 
-Run `/diff` to see what it touched. Then undo it:
+Without that last sentence, a good agent notices that `PLAN.md` requires five visible cards and asks how to proceed before it changes anything. That's worth seeing once too. Run `/diff` to see what it touched. Then undo it:
 
 1. Run `/rewind` and pick that turn.
 2. Choose **Conversation + files**. (The default, **Conversation only**, leaves your files as they are.)

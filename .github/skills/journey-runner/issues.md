@@ -40,3 +40,12 @@ Every journey ran from its README prompts through `extract-prompts.mjs`, `run-co
 - **Screenshot password on the command line.** Added `--password-env`.
 - **Verifier tampering.** A Superset repair edited `.github/scripts/verify-superset.mjs` to test from inside the cluster. The runner now checks `git diff --exit-code -- .github/scripts` after every prompt.
 - **Stale global azd subscription.** `azd config get defaults.subscription` pointed at a subscription this account can't access. Preflight now compares it with `az account show`.
+
+## 2026-09-28 — v3 reruns with Azure MCP on
+
+Grafana, n8n, Superset, WeatherView, and AIMarket reran with Azure MCP through `--azure-mcp all`. All five passed and cleaned up; Azure MCP served 5 to 30 calls per journey.
+
+- **All 519 `--mode all` tools overflow the context in plan mode.** WeatherView's plan prompt failed with "Static system messages and tool definitions exceed the model's usable context budget". The helper now loads 11 namespaces (41 tools).
+- **Interactive agents ask before breaking the spec.** WeatherView's throwaway `/rewind` prompt conflicted with PLAN.md, so the interactive agent asked questions instead of editing, and the pexpect script waited for file changes. The README prompt now marks it as an experiment.
+- **The tutorial README gets edited.** AIMarket's agent wrote run instructions into the journey README even when asked to "tell me". PLAN.md now forbids it, as WeatherView's already did (WeatherView's README stayed untouched this time).
+- **Verifier and plan disagreed.** verify-aimarket.mjs asked a lookup while PLAN-phase4 requires a comparison prompt; the read-only review caught it. Fixed in the verifier, not by the agent.

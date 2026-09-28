@@ -660,6 +660,8 @@ Then check out the pull request and test the chat endpoint and widget locally:
 gh pr checkout <PR_NUMBER>
 ```
 
+If an API test then fails with `ERR_MODULE_NOT_FOUND`, delete `api/dist` and rerun `npm test`. That folder still holds compiled files from `main`, including your search code, which the agent's branch doesn't have.
+
 **🔍 Review the PR like you would any code review:**
 
 - Does the system prompt include the product catalog? (It should fetch products on each request, not hardcode them)
@@ -765,7 +767,13 @@ After generation completes, run this read-only pre-deployment review.
   Do not report READY while any required check is unresolved.
 ```
 
-If the status is `NOT READY`, ask Copilot to fix only the failed checks, then rerun the same read-only review.
+If the status is `NOT READY`, have Copilot fix only the failed checks, then rerun the same read-only review:
+
+```
+> Fix only the checks that failed in that review. Don't change the
+  checked-in verifier in .github/scripts. Then rerun the complete
+  azd provision --preview --no-prompt.
+```
 
 **💡 What you're learning:** Small deployment details fail in different ways. A missing service tag stops `azd` from finding the API, an incomplete `.dockerignore` overwhelms the build, and Vite needs `VITE_API_URL` at build time even though the API URL only exists after provisioning, which is why a postdeploy hook rebuilds the storefront. Record each new lesson in the plan or a skill, not in a longer prompt.
 
@@ -963,6 +971,12 @@ az provider register --namespace Microsoft.OperationalInsights
 **Cause:** The generated Bicep calls `resourceId()` in the subscription-scope form, passing a resource group name where ARM expects a subscription ID. The preview doesn't evaluate that expression, so only `azd up` catches it.
 
 **Fix:** Use the "When something fails" prompt. The fix passes `subscription().subscriptionId` as the first argument, or uses the resource's `.id` property instead.
+
+### The post-provision hook fails on `az containerapp registry set` with `InternalServerError`
+
+**Cause:** Azure sometimes returns this error even though it saved the registry setting, usually right after it creates the app's managed identity. The hook stops before it configures the second app.
+
+**Fix:** Use the "When something fails" prompt. A good fix makes the hook check whether the setting was saved (`az containerapp registry list`) and retry the command once before failing, then reruns `azd up`.
 
 ### Cognitive Services reports unusual activity (`715-123420`)
 

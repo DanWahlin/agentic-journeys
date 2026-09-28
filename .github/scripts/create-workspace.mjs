@@ -72,6 +72,9 @@ test-results/
 playwright-report/
 artifacts/
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 *.tsbuildinfo
 `);
 
