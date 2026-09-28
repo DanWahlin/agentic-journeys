@@ -20,7 +20,7 @@ Do this when asked to write tests, start with "red", or say "write the failing t
 1. Write one test per observable behavior. Name each test after the behavior it proves, such as `returns 400 VALIDATION_ERROR when title exceeds 500 characters`, so the test list reads like the spec.
 2. Cover the boundaries the plan states, including limits, status codes, error codes, cascade effects, and cross-entity rules.
 3. Add only the minimal production stubs needed for the tests to compile and run, such as exported functions that throw `new Error('Not implemented')`. Do not implement behavior.
-4. Run the test command. Every new test must fail because of an assertion or a `Not implemented` error. A syntax, import, or configuration error does not count as red. Fix the test setup and rerun. Also make sure a correct implementation could pass each test: every spy, fake, or stub a test asserts on must be passed into the code under test. A test whose spy is never wired in can never go green.
+4. Run the test command. Every new test must fail because of an assertion or a `Not implemented` error. A syntax, import, or configuration error does not count as red. Fix the test setup and rerun. Also make sure a correct implementation could pass each test: every spy, fake, or stub a test asserts on must be passed into the code under test. A test whose spy is never wired in can never go green. Each fake must also do what production code needs from it: a fake SQL pool needs `request()`, and a mocked `UPDATE` must return the updated row when the repository returns it. Match partial objects with `expect.objectContaining`, never an exact object, when the response has more fields.
 5. Print a table with three columns (Requirement, Plan section, Test name) and list any requirement you could not test.
 6. Commit only the tests and stubs with a message that starts with `test:` and ends with `(red)`. When asked, create the local Git tag the prompt names so later diffs can prove the tests did not change.
 7. Stop. Do not start the green phase in the same turn, unless you're running the full cycle below.
@@ -53,8 +53,9 @@ When you're assigned an issue as the Copilot cloud agent, or asked for the "full
 
 1. If the issue says to update plans first, commit only the plan changes, with a message that starts with `docs:`.
 2. Run the red phase and commit it. Skip the stop in red step 7.
-3. Run the green phase against the tests from that red commit, and push only after the gate passes.
-4. In the pull request description, list the three commits (plan, red, green) and paste the Requirement → Test table so the reviewer can read the tests first.
+3. Run the green phase against the tests from that red commit. Push the plan, red, and green commits as soon as the gate passes, before any other validation or review. The session has a time limit (30 minutes by default), and it discards commits that weren't pushed.
+4. Run the built-in code review and security validation once. Fix only high-confidence findings, in one red/green round, then push again. Don't start another validation round: Copilot code review on the pull request covers the rest.
+5. In the pull request description, list the commits you made (the plan commit if there is one, red, green, and any review fix) and paste the Requirement → Test table so the reviewer can read the tests first.
 
 ## Always
 

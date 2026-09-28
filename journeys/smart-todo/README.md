@@ -281,6 +281,15 @@ Autopilot keeps working until the objective is met.
   change anything under src/api/test. Commit the result as a green commit.
 ```
 
+If the agent stops and says a red test can't pass, that's the rule working: it won't edit tests. Read each test it names. If you agree a test is wrong, fix it as a new red commit:
+
+```
+> Fix only the red tests you reported as impossible to pass, one change per
+  test, and commit them as a new red commit. Move the tag with
+  git tag -f phase1-red. Then finish the green phase with the tdd-builder
+  agent until "npm run check" passes, and commit it as green.
+```
+
 <details>
 <summary>Optional: split the work across parallel agents with <code>/plan</code> and <code>/fleet</code></summary>
 

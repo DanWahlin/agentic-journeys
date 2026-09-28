@@ -26,3 +26,17 @@
 - **Fix:** Added architecture-aware recovery to the runner and journey-template skills. ARM64 is not rejected automatically because Windows 11 on ARM can emulate many x64 applications. After the exact publisher architecture error, the learner may use the approved temporary x64 Azure publisher with secure token handling and verified deletion, or continue from an approved x64 host. Do not silently install privileged emulation or make local Docker a prerequisite.
 - **Verification:** The runner used a temporary scoped x64 Azure publisher for this validation only, deleted it, then passed the checked-in HTTP/assets verifier and the full Playwright deployed-behavior verifier.
 - **Status:** Upstream limitation documented; runner behavior corrected.
+
+## 2026-09-27 — journey-runner v2: six-journey rerun
+
+Every journey ran from its README prompts through `extract-prompts.mjs`, `run-copilot-prompt.mjs`, and `run-command.mjs`, with per-step timing and credits from `summarize-run.mjs`. All six deployed, passed their checked-in verifiers, and cleaned up. Runner defects found and fixed:
+
+- **Skill scripts denied under `-p`.** Azure skills run scripts from `~/.agents/skills`, which prompt mode denied. Added `--allow-skill-dirs`.
+- **Computer Use drove the host.** With `--allow-all-tools`, an acceptance check opened the user's Safari. The helper now turns off `computer-use` unless `--allow-mcp-server computer-use` is passed.
+- **Azure MCP tools hang under `-p`.** `get_azure_bestpractices` never returned in prompt mode (31 minutes), but returned in seconds interactively and in 2 seconds through the `azmcp` CLI. The helper turns off the `azure` server by default and adds `--timeout-minutes`.
+- **Agent-run `azd up` abandoned at 600 seconds.** Prompt mode stops waiting for background shell tasks after `COPILOT_TASK_WAIT_TIMEOUT_SECONDS` (600). The helper sets 3600 unless the caller did.
+- **Credits scraped from text.** The helper now reads `--usage-output-file`.
+- **Prompt blocks with `> ` on every line.** The extractor splits them into separate prompts; the Superset README block that used this style for one prompt was fixed.
+- **Screenshot password on the command line.** Added `--password-env`.
+- **Verifier tampering.** A Superset repair edited `.github/scripts/verify-superset.mjs` to test from inside the cluster. The runner now checks `git diff --exit-code -- .github/scripts` after every prompt.
+- **Stale global azd subscription.** `azd config get defaults.subscription` pointed at a subscription this account can't access. Preflight now compares it with `az account show`.
