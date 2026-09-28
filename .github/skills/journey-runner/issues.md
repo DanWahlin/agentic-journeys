@@ -33,7 +33,7 @@ Every journey ran from its README prompts through `extract-prompts.mjs`, `run-co
 
 - **Skill scripts denied under `-p`.** Azure skills run scripts from `~/.agents/skills`, which prompt mode denied. Added `--allow-skill-dirs`.
 - **Computer Use drove the host.** With `--allow-all-tools`, an acceptance check opened the user's Safari. The helper now turns off `computer-use` unless `--allow-mcp-server computer-use` is passed.
-- **Azure MCP tools hang under `-p`.** `get_azure_bestpractices` never returned in prompt mode (31 minutes), but returned in seconds interactively and in 2 seconds through the `azmcp` CLI. The helper turns off the `azure` server by default and adds `--timeout-minutes`.
+- **Azure MCP tools hang under `-p`.** `get_azure_bestpractices` never returned in prompt mode (31 minutes). Cause: in the plugin's namespace mode, an intent-only call asks the client to pick the command through MCP sampling (the server log shows a pending continuation, then `Failed to get command and parameters from intent`), and Copilot CLI doesn't answer sampling under `-p` (github/copilot-cli#2882). The helper now serves the same package in `--mode all`, which never samples; the best-practices and Bicep schema tools return in seconds. It also adds `--timeout-minutes`.
 - **Agent-run `azd up` abandoned at 600 seconds.** Prompt mode stops waiting for background shell tasks after `COPILOT_TASK_WAIT_TIMEOUT_SECONDS` (600). The helper sets 3600 unless the caller did.
 - **Credits scraped from text.** The helper now reads `--usage-output-file`.
 - **Prompt blocks with `> ` on every line.** The extractor splits them into separate prompts; the Superset README block that used this style for one prompt was fixed.

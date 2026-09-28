@@ -149,8 +149,11 @@ Relevant error output:
 
 Inspect the relevant application or Azure state, explain the root cause,
 make the smallest safe fix, rerun the failed step, and run the applicable
-verifier. Record the issue and resolution in issues.md. Do not print secrets.
+verifier. Don't change the checked-in verifier. Record the issue and
+resolution in issues.md. Do not print secrets.
 ```
+
+After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
 </details>
 
@@ -665,6 +668,12 @@ The agent explains what it plans to create and waits for your approval. Once it 
 If you can't create temporary resources, copy the workspace to a computer with an Intel or AMD chip, sign in there, and rerun `azd up` with the same environment name.
 
 </details>
+
+### Browser verification reports a Content Security Policy console error
+
+**Cause:** An inline `<script>` in `index.html`, usually a theme bootstrap that runs before first paint. The deployed `script-src 'self'` policy blocks it, and the local server doesn't send that header, so the error appears only in Azure.
+
+**Fix:** Move the script into `theme-bootstrap.js`, load it with `<script src>`, add it to the build list, and run `azd deploy`. Don't add `'unsafe-inline'` to the policy.
 
 ### Browser verification fails on geolocation
 

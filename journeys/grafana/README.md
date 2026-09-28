@@ -102,8 +102,11 @@ Relevant error output:
 
 Inspect the relevant application and Azure logs, explain the root cause,
 make the smallest safe fix, rerun the failed step, and run the journey
-verifier. Record the issue and resolution in issues.md. Do not print secrets.
+verifier. Don't change the checked-in verifier. Record the issue and
+resolution in issues.md. Do not print secrets.
 ```
+
+After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
 </details>
 

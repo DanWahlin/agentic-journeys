@@ -292,6 +292,8 @@ if (github) {
   console.log(`Repository: https://github.com/${github.fullName}`);
   console.log(`Ruleset: ${github.rulesetStatus}`);
   console.log(`CI on main: ${github.ciStatus}`);
+  // GitHub has no API for this setting, so the script can only remind you.
+  console.log(`Before Phase 4: open https://github.com/${github.fullName}/settings, then Copilot > Cloud agent, and turn off "Require approval for workflow runs".`);
 }
 console.log(`\nNext: cd ${workDir} and start copilot.`);
 

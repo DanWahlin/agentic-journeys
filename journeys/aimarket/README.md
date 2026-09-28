@@ -183,8 +183,11 @@ Relevant error output:
 
 Inspect the relevant application and Azure logs, explain the root cause,
 make the smallest safe fix, rerun the failed step, and run the journey
-verifier. Record the issue and resolution in issues.md. Do not print secrets.
+verifier. Don't change the checked-in verifier. Record the issue and
+resolution in issues.md. Do not print secrets.
 ```
+
+After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
 </details>
 
@@ -954,6 +957,12 @@ az provider register --namespace Microsoft.Search
 az provider register --namespace Microsoft.CognitiveServices
 az provider register --namespace Microsoft.OperationalInsights
 ```
+
+### `azd up` reports `InvalidTemplate` with "is not valid subscription identifier"
+
+**Cause:** The generated Bicep calls `resourceId()` in the subscription-scope form, passing a resource group name where ARM expects a subscription ID. The preview doesn't evaluate that expression, so only `azd up` catches it.
+
+**Fix:** Use the "When something fails" prompt. The fix passes `subscription().subscriptionId` as the first argument, or uses the resource's `.id` property instead.
 
 ### Cognitive Services reports unusual activity (`715-123420`)
 

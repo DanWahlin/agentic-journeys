@@ -134,8 +134,11 @@ Relevant error output:
 
 Inspect the relevant application and Azure logs, explain the root cause,
 make the smallest safe fix, rerun the failed step, and run the journey
-verifier. Record the issue and resolution in issues.md. Do not print secrets.
+verifier. Don't change the checked-in verifier. Record the issue and
+resolution in issues.md. Do not print secrets.
 ```
+
+After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
 </details>
 
@@ -367,6 +370,23 @@ Health endpoint: `GET /health` → `{"status": "OK"}` (HTTP 200)
 1. **Provider not registered**: Run `az provider register --namespace Microsoft.ContainerService` and retry
 2. **Subscription quota exceeded**: Check your VM quota with `az vm list-usage --location <region>`. AKS needs at least 4 vCPUs.
 3. **Region capacity**: Try a different region if you see capacity errors
+
+### `azd up` fails on PostgreSQL or the registry, although the preview passed
+
+`azd provision --preview` doesn't run every Azure validation, so some errors only appear in `azd up`. Two seen in validation runs:
+
+- `AvailabilityZoneNotAvailable`: the Bicep pins PostgreSQL to availability zone `1`, which isn't available for every subscription in `westus`. Remove the `availabilityZone` property.
+- `DisableExport_PublicNetworkAccessMustBeDisabled`: the registry disables exports while public access is on. Remove the `exportPolicy` override.
+
+Both are one-line fixes. Use the "When something fails" prompt, then rerun `azd up`; it keeps the resources that already succeeded.
+
+### The hook's health check times out, but the pod is Running
+
+**Cause:** The Azure load balancer probes `/` instead of `/healthz`, gets a 404, and drops every public request, even though Superset answers inside the cluster. This happens when the ingress annotation that sets the probe path loses its backslashes in the remote shell that `az aks command invoke` uses.
+
+**Check:** `az network lb show --resource-group <node-resource-group> --name kubernetes --query "probes[].requestPath"` must print `/healthz`.
+
+**Fix:** Put double quotes around the whole `--set-string` value in the hook's `helm upgrade` command, then rerun `azd up`. If the agent instead moves the health check inside the cluster, reject that change: the verifier checks the public URL because that's what you'll use.
 
 ### ModuleNotFoundError: No module named 'psycopg2'
 

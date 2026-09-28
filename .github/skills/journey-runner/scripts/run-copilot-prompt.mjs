@@ -21,8 +21,8 @@ const USAGE = `Usage: node run-copilot-prompt.mjs --prompt-file <path> [options]
   --allow-skill-dirs           Add the user skill and plugin directories that exist
                                (~/.copilot/skills, ~/.agents/skills, ~/.copilot/installed-plugins)
   --disable-mcp-server <name>  Turn off another MCP server (repeatable)
-  --allow-mcp-server <name>    Keep a default-off server on and enable it (repeatable).
-                               computer-use and azure are off by default under -p
+  --allow-mcp-server <name>    Keep computer-use on (it's off by default because it drives the host's apps)
+  --azure-mcp <all|plugin|off> How Azure MCP runs (default: all). See the comment below.
   --timeout-minutes <n>        Stop Copilot after n minutes and exit 124 (default: no limit)
   --secret-env-vars <names>    Comma-separated variables to strip from tools and redact
   --max-ai-credits <n>         Stop the session at this credit total
@@ -72,14 +72,31 @@ if (args.includes('--allow-skill-dirs')) {
     if (existsSync(path)) copilotArgs.push('--add-dir', path);
   }
 }
-// Off by default in prompt mode: computer-use drives the host's real apps, and the
-// Azure MCP server's intent routing waits for an approval that -p can't give, so its
-// tools hang (interactive sessions return normally). Azure skills still work through az and azd.
+// computer-use is off by default: in an unattended run it drives the host's real apps.
 const allowed = values('--allow-mcp-server');
-for (const name of ['computer-use', 'azure', ...values('--disable-mcp-server')]) {
+for (const name of ['computer-use', ...values('--disable-mcp-server')]) {
   if (!allowed.includes(name)) copilotArgs.push('--disable-mcp-server', name);
 }
 for (const name of allowed) copilotArgs.push('--enable-mcp-server', name);
+
+// Azure MCP stays on, because the journeys depend on it. The Azure Skills plugin starts it
+// in namespace mode, where a call with only an intent asks the client's model to pick the
+// command (MCP sampling). Copilot CLI doesn't answer sampling requests under -p
+// (github/copilot-cli#2882), so those calls wait forever. "all" replaces the plugin server
+// with the same package in --mode all, which exposes every tool directly and never samples.
+// Use "plugin" once the CLI answers sampling in prompt mode.
+const azureMcp = value('--azure-mcp') ?? 'all';
+if (!['all', 'plugin', 'off'].includes(azureMcp)) fail('--azure-mcp must be all, plugin, or off.');
+let mcpConfigFile;
+if (azureMcp !== 'plugin') copilotArgs.push('--disable-mcp-server', 'azure');
+if (azureMcp === 'plugin') copilotArgs.push('--enable-mcp-server', 'azure');
+if (azureMcp === 'all') {
+  mcpConfigFile = join(tmpdir(), `copilot-azmcp-${process.pid}-${Date.now()}.json`);
+  writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers: { azmcp: {
+    type: 'local', command: 'npx', args: ['-y', '@azure/mcp@latest', 'server', 'start', '--mode', 'all'], tools: ['*'],
+  } } }));
+  copilotArgs.push('--additional-mcp-config', `@${mcpConfigFile}`);
+}
 for (const flag of ['--agent', '--mode', '--model', '--max-autopilot-continues', '--max-ai-credits']) {
   const v = value(flag);
   if (v) copilotArgs.push(flag, v);
@@ -134,6 +151,7 @@ child.on('close', (exitCode) => {
   const sessionId = (output.match(/--resume=([0-9a-f-]{36})/g) ?? []).at(-1)?.split('=')[1];
   // --usage-output-file reports the session's running total; fall back to the printed summary.
   let credits = (output.match(/AI Credits\s+([\d.]+)/g) ?? []).at(-1)?.split(/\s+/).at(-1);
+  if (mcpConfigFile) rmSync(mcpConfigFile, { force: true });
   if (existsSync(usageFile)) {
     try { credits = (JSON.parse(readFileSync(usageFile, 'utf8')).totalNanoAiu / 1e9).toFixed(2); } catch {}
     rmSync(usageFile, { force: true });
