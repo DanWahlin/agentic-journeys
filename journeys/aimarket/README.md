@@ -552,7 +552,7 @@ Create the issue with one shell-neutral command:
 gh issue create --title "Add AI shopping assistant (chat endpoint + ChatWidget)" --body-file issue-body.md
 ```
 
-Then assign it to the GitHub Copilot cloud agent. Navigate to the issue on GitHub and click **"Assign to Copilot"**.
+Delete `issue-body.md` so it isn't committed with your search work. Then assign the issue to the GitHub Copilot cloud agent: open it on GitHub and click **"Assign to Copilot"**.
 
 Don't wait for the agent. Continue with Step 2 while it works.
 
@@ -774,7 +774,7 @@ Read the subscription ID on the host machine:
 az account show --query id --output tsv
 ```
 
-Set the returned value in the selected `azd` environment:
+If `azd env list` shows no environment, create one with `azd env new aimarket --location westus`. Then set the returned value in it:
 
 ```text
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
@@ -957,7 +957,9 @@ az provider register --namespace Microsoft.OperationalInsights
 
 ### Cognitive Services reports unusual activity (`715-123420`)
 
-Do not assume that the subscription or AI Services account is restricted. First, run an isolated read-only preview for the AI Services account and model deployment. If that preview passes, the full ARM deployment graph is the problem.
+Check the account name first. On some subscriptions, an `AIServices` account whose name starts with `ai-` always fails with this error, and the same template passes with another prefix. If your generated name starts with `ai-`, change the prefix to `cog-` and rerun the preview.
+
+Otherwise, don't assume that the subscription or AI Services account is restricted. First, run an isolated read-only preview for the AI Services account and model deployment. If that preview passes, the full ARM deployment graph is the problem.
 
 Inspect the compiled template for repeated Container App modules, large AVM pattern modules, unexpected preview API versions, and unrelated resource definitions. Apply [AVM Validation and Raw Fallback](./PLAN-phase4-azure.md#avm-validation-and-raw-fallback), then rerun the complete `azd provision --preview --no-prompt`. Do not continue to `azd up` until the complete preview passes.
 

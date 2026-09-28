@@ -90,6 +90,7 @@ Check Azure CLI and `azd` separately:
 2. Configure `azd` to reuse Azure CLI authentication with `azd config set auth.useAzCliAuth true`.
 3. Run an `azd` command that reads account/environment state before creating resources.
 4. If Azure CLI works but `azd` still reports an expired token, stop and report the mismatch. Do not assume `az login` fixed `azd`.
+5. Compare `azd config get defaults.subscription` with `az account show --query id -o tsv`. A stale global default makes `azd provision --preview` fail with an access error until a prompt sets `AZURE_SUBSCRIPTION_ID` in the environment. Report the mismatch; don't change the user's global config.
 
 ### Architecture preflight
 
@@ -220,6 +221,8 @@ For each check, record:
 - PASS, FAIL, or BLOCKED
 
 If a check fails, make one targeted repair based on the real error and rerun the failing check. Never replace unavailable execution with plausible output.
+
+Checked-in verifiers are the gate, so the agent must not edit them. After every prompt and repair, run `git diff --exit-code -- .github/scripts` in the clone or workspace. If a verifier changed, revert it, record the change as a FAIL of that repair, and fix the real cause. In one run, the agent moved Superset's public health check inside the cluster to get past a load balancer that dropped all public traffic.
 
 ## Step 6: Azure Deployment
 
