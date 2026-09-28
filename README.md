@@ -122,7 +122,7 @@ Leaving AI Search, AKS, or SQL running is what drives most of the monthly cost.
 
 ## Agentic journeys
 
-Each journey is self-contained — jump into whichever one fits what you want to learn. New to agentic coding? Start with [WeatherView](./journeys/weather-view/README.md).
+Each journey is self-contained. You can jump into whichever one fits what you want to learn. If you're new to agentic coding? Start with [WeatherView](./journeys/weather-view/README.md).
 
 ### Apps you build
 
