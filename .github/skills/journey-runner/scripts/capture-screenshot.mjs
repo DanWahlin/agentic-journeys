@@ -18,7 +18,8 @@ if (!url || !output) {
 }
 
 const username = value('username');
-const password = value('password');
+// Prefer --password-env <NAME> so the secret never appears in the process list.
+const password = value('password-env') ? process.env[value('password-env')] : value('password');
 const usernameSelector = value('username-selector');
 const passwordSelector = value('password-selector');
 const submitSelector = value('submit-selector');

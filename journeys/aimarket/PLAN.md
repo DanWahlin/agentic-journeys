@@ -54,6 +54,8 @@ aimarket/
 └── azure.yaml    # azd configuration
 ```
 
+Don't edit `README.md` in this directory: it's the journey's tutorial, not project documentation. Put run and test instructions in `api/README.md`, `client/README.md`, or your reply.
+
 ## Phase Plans
 
 | Journey phase | Detailed plan | Outcome |

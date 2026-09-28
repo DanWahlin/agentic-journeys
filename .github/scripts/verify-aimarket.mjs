@@ -25,7 +25,7 @@ main(async () => {
   });
   if (asArray(searchPayload, ['data', 'items', 'products', 'results']).length === 0) throw new Error('Semantic search returned no products');
   const { data: chatPayload } = await jsonRequest(`${api}/api/chat`, {
-    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'What laptops do you have?' }] }), timeoutMs: 120000,
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'Compare the UltraBook Pro 15 with the Wireless Noise-Canceling Headphones for travel.' }] }), timeoutMs: 120000,
   });
   if (chatPayload?.role !== 'assistant' || typeof chatPayload?.content !== 'string') {
     throw new Error('Chat response did not match the required assistant message shape');

@@ -149,8 +149,11 @@ Relevant error output:
 
 Inspect the relevant application or Azure state, explain the root cause,
 make the smallest safe fix, rerun the failed step, and run the applicable
-verifier. Record the issue and resolution in issues.md. Do not print secrets.
+verifier. Don't change the checked-in verifier. Record the issue and
+resolution in issues.md. Do not print secrets.
 ```
+
+After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
 </details>
 
@@ -268,10 +271,12 @@ Run the app and check the local acceptance criteria manually. Search for your ci
 Agents make changes you won't always want to keep. Ask for one on purpose:
 
 ```
-> Replace the five forecast cards with a single horizontal carousel.
+> Replace the five forecast cards with a single horizontal carousel that
+  shows one day at a time. This is a throwaway experiment that I'll undo, so
+  don't change PLAN.md and don't ask me questions; just make the change.
 ```
 
-Run `/diff` to see what it touched. Then undo it:
+Without that last sentence, a good agent notices that `PLAN.md` requires five visible cards and asks how to proceed before it changes anything. That's worth seeing once too. Run `/diff` to see what it touched. Then undo it:
 
 1. Run `/rewind` and pick that turn.
 2. Choose **Conversation + files**. (The default, **Conversation only**, leaves your files as they are.)
@@ -298,11 +303,11 @@ Copilot reports that it rewound the conversation and restored the files. Reload 
   for success, no-result, malformed-payload, and network-failure cases. They
   must assert exactly five cards, city search, unit refetch, preference
   persistence, retry behavior, accessible names, and visible keyboard focus.
-  Add test and test:e2e package scripts and document the exact one-time Chromium
+  Add test and test:e2e package scripts and tell me the exact one-time Chromium
   install command. Do not weaken application behavior to make tests pass.
 ```
 
-Run the generated tests yourself. If Playwright's Chromium browser isn't installed yet, run the install command the agent documented in the project. Skip the `--with-deps` flag: it installs system-level packages and needs administrator rights, which this journey doesn't require.
+Run the generated tests yourself. If Playwright's Chromium browser isn't installed yet, run the install command the agent gave you. Skip the `--with-deps` flag: it installs system-level packages and needs administrator rights, which this journey doesn't require.
 
 **🔍 Inspect the tests:**
 
@@ -331,7 +336,7 @@ Have Copilot write the verifier before you run it, so you've read every script y
   6. print a short PASS summary and exit 0, or print the exact failed assertion
      and exit nonzero
   Use fetch and Node standard-library APIs only. Do not start, stop, or kill an
-  unrelated process. Add an npm verify script and document how to start the app
+  unrelated process. Add an npm verify script and tell me how to start the app
   in one terminal and run the verifier in another. Then show me the created
   file before running it.
 ```
@@ -350,12 +355,19 @@ The script must print a PASS summary. Stop only the local server you started for
 
 ```
 > /review Review the completed WeatherView implementation against PLAN.md.
-  Focus on correctness, accessibility, resilience, performance, browser
-  security, and test gaps. Identify missing or incorrectly implemented
-  requirements with file and line evidence. Do not suggest a framework rewrite.
+  Skip the "Azure Deployment" section; Phase 3 builds it. Focus on
+  correctness, accessibility, resilience, performance, browser security, and
+  test gaps. Identify missing or incorrectly implemented requirements with
+  file and line evidence. Do not suggest a framework rewrite.
 ```
 
-Address high-confidence correctness, accessibility, security, and reliability findings. Rerun unit tests, browser tests, and `scripts/verify-app.mjs` after every repair.
+Read the findings before you fix anything. Then have the agent fix the ones that matter:
+
+```
+> Fix the high-confidence correctness, accessibility, security, and
+  reliability findings from that review. Add a test for each fix, then rerun
+  the unit tests, browser tests, and scripts/verify-app.mjs.
+```
 
 > **💡 Get another perspective:** Use `/rubber-duck` with the same bounded review question against another model. Act only on specific, reproducible findings tied to `PLAN.md`.
 
@@ -399,27 +411,7 @@ The generation prompt stays short on purpose. The full deployment contract (Bice
 
 If GitHub Copilot asks questions, accept answers consistent with `PLAN.md`: Static Web Apps Free, default/fallback Static Web Apps location `eastus2`, and no backend.
 
-#### Step 2: Perform a read-only pre-deployment review
-
-```
-> Use Azure Skills to perform a read-only pre-deployment review of WeatherView.
-  Do not modify files and do not create Azure resources. Check every
-  requirement in PLAN.md's "Azure Deployment" section, including "Bicep
-  Requirements," "azure.yaml," "Static Web Apps Configuration," and every
-  prohibition it states, and confirm that tests and local verification still
-  pass. Run Azure Skills validation plus any existing read-only azd/Bicep
-  validation that does not create resources. Return:
-  1. PRE-DEPLOYMENT STATUS: READY or NOT READY
-  2. a table with PASS or FAIL plus file/line evidence for every requirement
-  3. each blocking issue and its smallest exact fix
-  Do not report READY while a required check is unresolved.
-```
-
-If the status is `NOT READY`, ask GitHub Copilot to fix only the failed checks, then rerun the same read-only review.
-
-**💡 What you're learning:** A deployment can be structurally valid but still target the wrong resource. The `azd-service-name: web` tag is the bridge between Bicep and the `web` service in `azure.yaml`. Notice also that neither prompt enumerated the requirements. `PLAN.md` is the contract, and the review binds to it. When you discover a new deployment gotcha, record it in the plan, not in an ever-longer prompt.
-
-#### Step 3: Let GitHub Copilot prepare the azd environment
+#### Step 2: Let GitHub Copilot prepare the azd environment
 
 Let the agent prepare the environment instead of copying values through a chain of `az` commands:
 
@@ -442,6 +434,27 @@ Let the agent prepare the environment instead of copying values through a chain 
 ```
 
 `Microsoft.Web` is the only provider this journey needs; don't let the agent register others.
+
+#### Step 3: Perform a read-only pre-deployment review
+
+```
+> Use Azure Skills to perform a read-only pre-deployment review of WeatherView.
+  Do not modify files and do not create Azure resources. Check every
+  requirement in PLAN.md's "Azure Deployment" section, including "Bicep
+  Requirements," "azure.yaml," "Static Web Apps Configuration," and every
+  prohibition it states, and confirm that tests and local verification still
+  pass. Skip checks that need a live deployment; Step 5 runs them. Run Azure
+  Skills validation plus any existing read-only azd/Bicep validation that does
+  not create resources, including azd provision --preview. Return:
+  1. PRE-DEPLOYMENT STATUS: READY or NOT READY
+  2. a table with PASS or FAIL plus file/line evidence for every requirement
+  3. each blocking issue and its smallest exact fix
+  Do not report READY while a required check is unresolved.
+```
+
+If the status is `NOT READY`, ask GitHub Copilot to fix only the failed checks, then rerun the same read-only review.
+
+**💡 What you're learning:** A deployment can be structurally valid but still target the wrong resource. The `azd-service-name: web` tag is the bridge between Bicep and the `web` service in `azure.yaml`. Notice also that neither the generation prompt nor the review enumerated the requirements. `PLAN.md` is the contract, and the review binds to it. When you discover a new deployment gotcha, record it in the plan, not in an ever-longer prompt.
 
 #### Step 4: Run the deployment yourself
 
@@ -587,6 +600,8 @@ This journey is free under normal lab usage, but cleanup still matters: it prove
 
 **Fix:** Rerun the Phase 3 read-only review. The `web` key in `azure.yaml` and `azd-service-name` tag must match exactly.
 
+If the tag is already there (`az staticwebapp list --resource-group <resource-group> --query "[].tags"`), azd looked the app up seconds after creating it, before Azure indexed its tags. Run `azd deploy` to publish again.
+
 ### `azd up` says the service source and output folder cannot both be the root
 
 **Cause:** Azure Static Web Apps does not allow `project: .` to also be the publish output folder.
@@ -655,6 +670,12 @@ The agent explains what it plans to create and waits for your approval. Once it 
 If you can't create temporary resources, copy the workspace to a computer with an Intel or AMD chip, sign in there, and rerun `azd up` with the same environment name.
 
 </details>
+
+### Browser verification reports a Content Security Policy console error
+
+**Cause:** An inline `<script>` in `index.html`, usually a theme bootstrap that runs before first paint. The deployed `script-src 'self'` policy blocks it, and the local server doesn't send that header, so the error appears only in Azure.
+
+**Fix:** Move the script into `theme-bootstrap.js`, load it with `<script src>`, add it to the build list, and run `azd deploy`. Don't add `'unsafe-inline'` to the policy.
 
 ### Browser verification fails on geolocation
 

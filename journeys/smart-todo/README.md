@@ -158,8 +158,9 @@ Relevant error output:
 
 Inspect the relevant application and Azure logs, explain the root cause,
 make the smallest safe fix, rerun the failed step, and run the phase gate.
-Note the problem and fix for the pull request's "Problems and fixes"
-section. Do not print secrets.
+Don't change tests, gates, or the checked-in verifier. Note the problem and
+fix for the pull request's "Problems and fixes" section. Do not print
+secrets.
 ```
 
 </details>
@@ -279,6 +280,15 @@ Autopilot keeps working until the objective is met.
 > /autopilot Use the tdd-builder agent for the green phase of issue
   #<api-issue>. Implement src/api until "npm run check" passes. Do not
   change anything under src/api/test. Commit the result as a green commit.
+```
+
+If the agent stops and says a red test can't pass, that's the rule working: it won't edit tests. Read each test it names. If you agree a test is wrong, fix it as a new red commit:
+
+```
+> Fix only the red tests you reported as impossible to pass, one change per
+  test, and commit them as a new red commit. Move the tag with
+  git tag -f phase1-red. Then finish the green phase with the tdd-builder
+  agent until "npm run check" passes, and commit it as green.
 ```
 
 <details>
@@ -622,6 +632,8 @@ Triage the Copilot code review as before, then enable auto-merge. After it merge
 1. Run `gh workflow run copilot-setup-steps.yml` and confirm it succeeds with `gh run list --workflow copilot-setup-steps.yml`.
 2. In the repository's **Settings**, open **Copilot** → **Cloud agent** and turn off **Require approval for workflow runs**, so CI runs on the agent's pushes without you approving each one. It's safe here because `ci.yml` uses no secrets.
 
+**Gate:** Don't assign the agent until this setting is off. GitHub has no API for it, so no script can check it for you. With it on, the agent ends its session while CI waits for you, and never sees whether its code builds.
+
 ### Step 2: Hand an issue to the cloud agent 🐙
 
 ```
@@ -704,6 +716,9 @@ The next step is a factory that runs without anyone starting it. This repository
 | The pull request merged before Copilot code review posted | Auto-merge was on when the pull request opened. Handle the late comments in a follow-up pull request, and enable auto-merge only after the review from now on. |
 | A pull request shows "no checks reported" | It conflicts with `main`, and GitHub doesn't run workflows on a conflicting pull request. Merge `origin/main`, resolve, and push (or ask `@copilot` to). |
 | Checks never start on the cloud agent's pull request | Turn off **Require approval for workflow runs** (Settings → Copilot → Cloud agent), or run `gh run rerun <run-id>` for the run whose conclusion is `action_required`. |
+| The agent's last comment says CI is blocked or `action_required` | It ended its session before the run was approved, so it never read the result. Approve with `gh run rerun <run-id>`, turn off **Require approval for workflow runs**, and paste the failing check's error line in one `@copilot` comment. |
+| The cloud agent's pull request has only a plan commit, and its session ended | The session hit its time limit (30 minutes by default) before pushing, so its other commits are gone. Check the "Running Copilot cloud agent" run log for `The operation was canceled`. Close the pull request, unassign `copilot-swe-agent[bot]`, and assign the issue again. |
+| Green stops and says a red test can't pass | The agent is following its rule not to edit tests. Read the tests it names; if you agree, use the red-fix prompt in [Phase 1 Step 3](#step-3-green-let-the-agent-make-them-pass). |
 | `gh pr merge` or auto-merge fails on a stack layer | Stack layers merge with `gh stack merge <pr-number> --yes --squash`, which also merges the unmerged layers below it. |
 | A layer shows "needs rebase", or the stack merge reports a non-linear history | A lower layer or `main` moved. Run `gh stack sync`, or `gh stack rebase` and then `gh stack push`. On a conflict, resolve it and run `gh stack rebase --continue`. |
 | You want Copilot review on the Phase 2 or Phase 3 layer | The ruleset requests it only for pull requests whose base is `main`. Run `gh pr edit <pr-number> --add-reviewer @copilot`. |
@@ -757,7 +772,7 @@ Remove the API worktree with `git worktree remove ../../../smart-todo-api`. If y
 
 ## Lessons from Validation Runs
 
-This journey was run end to end six times before publishing. Each rule below exists because a run broke without it.
+This journey was run end to end seven times before publishing. Each rule below exists because a run broke without it.
 
 - **Auto-merge before review merged unreviewed code.** A pull request merged four minutes before Copilot's review posted four real findings. Hence: wait for the review, and require conversation resolution.
 - **Review rounds multiplied.** Every push started a new review, and each round found something in the last fix. Three rounds on one pull request cost more than the implementation. Hence: one round, one push.
@@ -773,6 +788,9 @@ This journey was run end to end six times before publishing. Each rule below exi
 - **Merging the bottom layer early broke the stack.** The next layer's pull request moved to `main`, got an unplanned Copilot review, and GitHub couldn't create the stack because its bottom pull request was already merged. Hence: merge the whole stack once, from the top.
 - **A lazy form hid the UI test's target.** The detail screen was a SwiftUI `Form`, which only builds the rows on screen. After the due-date controls pushed the steps down, the UI test failed about one CI run in eight and never locally. Hence: a `ScrollView` for the detail screen, and 10-second waits.
 - **Plan mode blocks writes.** `/fleet` launched while the session was still in plan mode; three subagents designed everything and wrote nothing.
+- **Green stopped on tests that couldn't pass.** Five red tests used fakes that production code couldn't work with, such as a database pool without the method the code calls. The green agent refused to edit them, as it should. Hence: the red-fix prompt in Phase 1 Step 3, and a red-phase rule that fakes must do what production code needs.
+- **The cloud agent lost its work to the clock.** It committed red and green, then ran its own validation round after round and hit the 30-minute session limit before pushing. Nothing but the plan commit survived. Hence: the agent pushes as soon as green passes and runs one validation round.
+- **The agent can't wait for an approval.** With **Require approval for workflow runs** on, the agent ended its session while CI waited for a person, so it never saw a failing `ios` check. Hence: the setting is a gate in Phase 4 Step 1.
 
 </details>
 

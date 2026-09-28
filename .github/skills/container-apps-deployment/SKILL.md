@@ -177,3 +177,7 @@ output RESOURCE_GROUP_NAME string = rg.name
 ```
 
 Wrong naming → `azd env get-value` returns "key not found".
+
+## Transient `az containerapp registry set` errors
+
+Right after a Container App's system identity is created, `az containerapp registry set --identity system` can return `InternalServerError` even though the registry entry was saved. In post-provision hooks, retry once, then confirm with `az containerapp registry list` before failing, so the hook doesn't stop before configuring the next app.

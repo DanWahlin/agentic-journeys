@@ -183,8 +183,11 @@ Relevant error output:
 
 Inspect the relevant application and Azure logs, explain the root cause,
 make the smallest safe fix, rerun the failed step, and run the journey
-verifier. Record the issue and resolution in issues.md. Do not print secrets.
+verifier. Don't change the checked-in verifier. Record the issue and
+resolution in issues.md. Do not print secrets.
 ```
+
+After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
 </details>
 
@@ -434,7 +437,7 @@ Use Playwright to turn the browser checklist into repeatable end-to-end tests.
   - adding 2 items updates the cart badge, quantities, and total
   - placing an order displays a confirmation containing an order ID
   Use accessible locators instead of fixed delays, keep test data predictable,
-  and add a test:e2e script. Document how to install Playwright Chromium and
+  and add a test:e2e script. Tell me how to install Playwright Chromium and
   run the tests on Windows PowerShell, Mac, and Linux.
 ```
 
@@ -552,7 +555,7 @@ Create the issue with one shell-neutral command:
 gh issue create --title "Add AI shopping assistant (chat endpoint + ChatWidget)" --body-file issue-body.md
 ```
 
-Then assign it to the GitHub Copilot cloud agent. Navigate to the issue on GitHub and click **"Assign to Copilot"**.
+Delete `issue-body.md` so it isn't committed with your search work. Then assign the issue to the GitHub Copilot cloud agent: open it on GitHub and click **"Assign to Copilot"**.
 
 Don't wait for the agent. Continue with Step 2 while it works.
 
@@ -657,6 +660,8 @@ Then check out the pull request and test the chat endpoint and widget locally:
 gh pr checkout <PR_NUMBER>
 ```
 
+If an API test then fails with `ERR_MODULE_NOT_FOUND`, delete `api/dist` and rerun `npm test`. That folder still holds compiled files from `main`, including your search code, which the agent's branch doesn't have.
+
 **🔍 Review the PR like you would any code review:**
 
 - Does the system prompt include the product catalog? (It should fetch products on each request, not hardcode them)
@@ -700,7 +705,12 @@ With both features on `main`, review the whole application once before you gener
   security, or reliability issues.
 ```
 
-Address any high-confidence correctness, security, or reliability findings before continuing.
+Read the findings, then have the agent fix the ones that matter before you deploy:
+
+```
+> Fix the high-confidence correctness, security, and reliability findings
+  from that review, then rerun the API build and the Playwright tests.
+```
 
 > **💡 Get multiple perspectives:** Run `/rubber-duck` with the same review request against multiple models. Compare their findings and act on issues that are specific, reproducible, and relevant to the [`PLAN.md` overview](./PLAN.md) and the four linked phase plans above.
 
@@ -757,7 +767,13 @@ After generation completes, run this read-only pre-deployment review.
   Do not report READY while any required check is unresolved.
 ```
 
-If the status is `NOT READY`, ask Copilot to fix only the failed checks, then rerun the same read-only review.
+If the status is `NOT READY`, have Copilot fix only the failed checks, then rerun the same read-only review:
+
+```
+> Fix only the checks that failed in that review. Don't change the
+  checked-in verifier in .github/scripts. Then rerun the complete
+  azd provision --preview --no-prompt.
+```
 
 **💡 What you're learning:** Small deployment details fail in different ways. A missing service tag stops `azd` from finding the API, an incomplete `.dockerignore` overwhelms the build, and Vite needs `VITE_API_URL` at build time even though the API URL only exists after provisioning, which is why a postdeploy hook rebuilds the storefront. Record each new lesson in the plan or a skill, not in a longer prompt.
 
@@ -769,7 +785,7 @@ Read the subscription ID on the host machine:
 az account show --query id --output tsv
 ```
 
-Set the returned value in the selected `azd` environment:
+If `azd env list` shows no environment, create one with `azd env new aimarket --location westus`. Then set the returned value in it:
 
 ```text
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
@@ -950,9 +966,23 @@ az provider register --namespace Microsoft.CognitiveServices
 az provider register --namespace Microsoft.OperationalInsights
 ```
 
+### `azd up` reports `InvalidTemplate` with "is not valid subscription identifier"
+
+**Cause:** The generated Bicep calls `resourceId()` in the subscription-scope form, passing a resource group name where ARM expects a subscription ID. The preview doesn't evaluate that expression, so only `azd up` catches it.
+
+**Fix:** Use the "When something fails" prompt. The fix passes `subscription().subscriptionId` as the first argument, or uses the resource's `.id` property instead.
+
+### The post-provision hook fails on `az containerapp registry set` with `InternalServerError`
+
+**Cause:** Azure sometimes returns this error even though it saved the registry setting, usually right after it creates the app's managed identity. The hook stops before it configures the second app.
+
+**Fix:** Use the "When something fails" prompt. A good fix makes the hook check whether the setting was saved (`az containerapp registry list`) and retry the command once before failing, then reruns `azd up`.
+
 ### Cognitive Services reports unusual activity (`715-123420`)
 
-Do not assume that the subscription or AI Services account is restricted. First, run an isolated read-only preview for the AI Services account and model deployment. If that preview passes, the full ARM deployment graph is the problem.
+Check the account name first. On some subscriptions, an `AIServices` account whose name starts with `ai-` always fails with this error, and the same template passes with another prefix. If your generated name starts with `ai-`, change the prefix to `cog-` and rerun the preview.
+
+Otherwise, don't assume that the subscription or AI Services account is restricted. First, run an isolated read-only preview for the AI Services account and model deployment. If that preview passes, the full ARM deployment graph is the problem.
 
 Inspect the compiled template for repeated Container App modules, large AVM pattern modules, unexpected preview API versions, and unrelated resource definitions. Apply [AVM Validation and Raw Fallback](./PLAN-phase4-azure.md#avm-validation-and-raw-fallback), then rerun the complete `azd provision --preview --no-prompt`. Do not continue to `azd up` until the complete preview passes.
 

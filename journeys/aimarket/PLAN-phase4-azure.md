@@ -57,6 +57,8 @@ Use this sequence while generating the infrastructure:
 
 For the raw Foundry fallback, create an `AIServices` account with S0 SKU, system-assigned identity, public network access enabled, local authentication disabled only when all clients use managed identity, and a unique custom subdomain. Create the selected model as a child deployment with `GlobalStandard` SKU and a capacity supported by the subscription. Use current stable API versions that pass Bicep build and the full Azure preview.
 
+Don't start the Foundry account name with `ai-`. On some subscriptions, every `AIServices` account named `ai-<token>` fails preflight with `715-123420` ("unusual activity") while any other prefix, such as `cog-`, passes with the same template. Use `cog-` in `abbreviations.json` or the names map.
+
 Error `715-123420` can be attributed to `Microsoft.CognitiveServices/accounts` even when the isolated account and model template passes. In that case, reduce the full deployment graph as described above. Do not split Foundry into a separate deployment only to hide the error.
 
 ### Bicep Requirements

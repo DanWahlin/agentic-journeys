@@ -7,7 +7,10 @@
   "scripts": {
     "capture": "node capture-screenshot.mjs",
     "preflight": "node check-prerequisites.mjs",
-    "copilot": "node run-copilot-prompt.mjs"
+    "copilot": "node run-copilot-prompt.mjs",
+    "prompts": "node extract-prompts.mjs",
+    "run": "node run-command.mjs",
+    "summary": "node summarize-run.mjs"
   },
   "dependencies": {
     "playwright": "1.61.1"

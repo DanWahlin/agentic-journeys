@@ -50,6 +50,8 @@ module aksCluster 'br/public:avm/res/container-service/managed-cluster:0.9.0' = 
 }
 ```
 
+If you add an Azure Container Registry, don't set `exportPolicy` to `disabled` while `publicNetworkAccess` is `Enabled`. Azure rejects the combination with `DisableExport_PublicNetworkAccessMustBeDisabled`, and the preview doesn't catch it.
+
 ## Quick Start (Verified)
 
 ```text
@@ -160,7 +162,9 @@ See [config/health-probes.md](config/health-probes.md) for liveness, readiness, 
 | Superset Web | 250m | 1000m | 512Mi | 2Gi |
 | Init Container | (inherits) | (inherits) | (inherits) | (inherits) |
 
-**⚠️ Load balancer health probe:** Install ingress-nginx with `--set-string controller.service.annotations.service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path=/healthz`. Without it, the Azure load balancer probes `/`, gets a 404, marks every node unhealthy, and requests to the public IP time out even though the ingress works inside the cluster.
+**⚠️ Load balancer health probe:** Install ingress-nginx with `--set-string "controller.service.annotations.service\.beta\.kubernetes\.io/azure-load-balancer-health-probe-request-path=/healthz"`. Without it, the Azure load balancer probes `/`, gets a 404, marks every node unhealthy, and requests to the public IP time out even though the ingress works inside the cluster. Keep the double quotes: `az aks command invoke` runs the command in a remote shell, which strips unquoted backslashes and turns the key into a nested map (`service: map[beta:...]`) that Azure ignores. After install, confirm with `az network lb show --resource-group <node-resource-group> --name kubernetes --query "probes[].requestPath"`, which must print `/healthz`. Never move the hook's or verifier's public-URL check inside the cluster to get past a timeout: that hides exactly this failure.
+
+**⚠️ Ingress admission webhook:** Wait for the controller (`kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=5m`) before `kubectl apply -f ingress.yaml`. Helm returns before the admission service has an endpoint, and the apply fails with `failed calling webhook "validate.nginx.ingress.kubernetes.io" ... no endpoints available`.
 
 **⚠️ Node count:** Use two `Standard_D2s_v3` nodes (`count: 2`), even though one node looks cheaper in a cost estimate. On one node, Superset, the NGINX ingress, and the AKS run-command pod don't fit: the run-command pod stays unschedulable (`Insufficient cpu`), and `az aks command invoke` fails with the misleading `Operation returned an invalid status 'OK'`.
 
