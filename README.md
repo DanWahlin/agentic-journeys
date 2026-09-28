@@ -122,34 +122,45 @@ Leaving AI Search, AKS, or SQL running is what drives most of the monthly cost.
 
 ## Agentic journeys
 
-Each journey is self-contained — jump into whichever one fits what you want to learn:
+Each journey is self-contained — jump into whichever one fits what you want to learn. New to agentic coding? Start with [WeatherView](./journeys/weather-view/README.md).
+
+### Apps you build
+
+You build an app from a plan with the agent, then deploy it to Azure.
 
 | Journey | What you'll do | Cost if left running |
 |---------|----------------|----------------------|
 | [WeatherView](./journeys/weather-view/README.md) | **Start here.** Build an accessible vanilla JavaScript forecast app from a plan and deploy it to Azure Static Web Apps. | $0 on the Free tier |
+| [AIMarket](./journeys/aimarket/README.md) | Build a full-stack marketplace from a spec: API + React + AI Search + Foundry chat. | ~$100–115/month |
+| [SmartTodo](./journeys/smart-todo/README.md) | Build an AI todo app test-first: GitHub issues, plan interviews, red/green TDD, stacked PRs, CI gates, and a cloud agent factory, deployed to Azure Functions, Azure SQL, and Foundry with a SwiftUI client. | ~$10–30/month |
+
+### Open-source app deployments
+
+An agent deploys an existing open-source app to Azure. You describe what you want, review the plan and cost, and verify the result.
+
+| Journey | What you'll do | Cost if left running |
+|---------|----------------|----------------------|
 | [Grafana](./journeys/grafana/README.md) | Deploy an OSS observability app to Container Apps — one container, no database. | ~$10–20/month |
 | [n8n](./journeys/n8n/README.md) | Deploy workflow automation with PostgreSQL, health probes, and post-provision hooks. | ~$25–35/month |
 | [Apache Superset](./journeys/superset/README.md) | Deploy a BI platform to AKS: init containers, ConfigMaps, Kubernetes debugging. | ~$200–215/month |
-| [AIMarket](./journeys/aimarket/README.md) | Build a full-stack marketplace from a spec: API + React + AI Search + Foundry chat. | ~$100–115/month |
-| [SmartTodo](./journeys/smart-todo/README.md) | Build an AI todo app test-first: GitHub issues, plan interviews, red/green TDD, stacked PRs, CI gates, and a cloud agent factory, deployed to Azure Functions, Azure SQL, and Foundry with a SwiftUI client. | ~$10–30/month |
 
 > **Tip:** Complete a journey and run `azd down --force --purge` the same day. Cost estimates are “if left on for a month,” not what you pay for a single lab session.
 
 ## What each journey teaches
 
-| Pipeline slice | WeatherView | Grafana | n8n | Superset | AIMarket | SmartTodo |
-|----------------|:-----------:|:-------:|:---:|:--------:|:--------:|:---------:|
-| Idea / product intent | ✅ | | | | ✅ | ✅ |
-| PLAN/spec → agentic code | ✅ | | | | ✅ | ✅ |
+| Pipeline slice | WeatherView | AIMarket | SmartTodo | Grafana | n8n | Superset |
+|----------------|:-----------:|:--------:|:---------:|:-------:|:---:|:--------:|
+| Idea / product intent | ✅ | ✅ | ✅ | | | |
+| PLAN/spec → agentic code | ✅ | ✅ | ✅ | | | |
 | Agent-generated Bicep + `azd` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Azure Static Web Apps | ✅ | | | | | |
-| Container Apps | | ✅ | ✅ | | ✅ | |
-| AKS | | | | ✅ | | |
-| Azure Functions | | | | | | ✅ |
-| Microsoft Foundry / LLMs | | | | | ✅ | ✅ |
-| Azure AI Search | | | | | ✅ | |
-| Test-first gates + GitHub workflow (issues, PRs, rulesets, cloud agent) | | | | | | ✅ |
-| **Agentic practice you'll add** | Plan mode, `@` mentions, `/diff`, `/rewind` | Plan and cost first, preview, then deploy; operate the app through its API | Work in parallel while `azd up` runs; an agent-built workflow | Cost review before a big deploy; `/fork` a what-if | Hand a feature to the cloud agent while you build another; Copilot code review | Plan interviews, red/green TDD agents, stacked PRs, a cloud-agent factory |
+| Container Apps | | ✅ | | ✅ | ✅ | |
+| AKS | | | | | | ✅ |
+| Azure Functions | | | ✅ | | | |
+| Microsoft Foundry / LLMs | | ✅ | ✅ | | | |
+| Azure AI Search | | ✅ | | | | |
+| Test-first gates + GitHub workflow (issues, PRs, rulesets, cloud agent) | | | ✅ | | | |
+| **Agentic practice you'll add** | Plan mode, `@` mentions, `/diff`, `/rewind` | Hand a feature to the cloud agent while you build another; Copilot code review | Plan interviews, red/green TDD agents, stacked PRs, a cloud-agent factory | Plan and cost first, preview, then deploy; operate the app through its API | Work in parallel while `azd up` runs; an agent-built workflow | Cost review before a big deploy; `/fork` a what-if |
 
 ---
 
