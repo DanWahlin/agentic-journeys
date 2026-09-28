@@ -23,6 +23,7 @@ const USAGE = `Usage: node run-copilot-prompt.mjs --prompt-file <path> [options]
   --disable-mcp-server <name>  Turn off another MCP server (repeatable)
   --allow-mcp-server <name>    Keep computer-use on (it's off by default because it drives the host's apps)
   --azure-mcp <all|plugin|off> How Azure MCP runs (default: all). See the comment below.
+  --azure-mcp-namespaces <list> Comma-separated Azure MCP namespaces for --azure-mcp all
   --timeout-minutes <n>        Stop Copilot after n minutes and exit 124 (default: no limit)
   --secret-env-vars <names>    Comma-separated variables to strip from tools and redact
   --max-ai-credits <n>         Stop the session at this credit total
@@ -84,7 +85,10 @@ for (const name of allowed) copilotArgs.push('--enable-mcp-server', name);
 // command (MCP sampling). Copilot CLI doesn't answer sampling requests under -p
 // (github/copilot-cli#2882), so those calls wait forever. "all" replaces the plugin server
 // with the same package in --mode all, which exposes every tool directly and never samples.
+// All 519 tools exceed the model's context in plan mode, so it loads only the namespaces the
+// journeys use (41 tools, about the size of the plugin's namespace mode).
 // Use "plugin" once the CLI answers sampling in prompt mode.
+const AZURE_MCP_NAMESPACES = (value('--azure-mcp-namespaces') ?? 'get_azure_bestpractices,bicepschema,deploy,azd,cloudarchitect,documentation,pricing,quota,monitor,resourcehealth,wellarchitectedframework').split(',');
 const azureMcp = value('--azure-mcp') ?? 'all';
 if (!['all', 'plugin', 'off'].includes(azureMcp)) fail('--azure-mcp must be all, plugin, or off.');
 let mcpConfigFile;
@@ -93,7 +97,8 @@ if (azureMcp === 'plugin') copilotArgs.push('--enable-mcp-server', 'azure');
 if (azureMcp === 'all') {
   mcpConfigFile = join(tmpdir(), `copilot-azmcp-${process.pid}-${Date.now()}.json`);
   writeFileSync(mcpConfigFile, JSON.stringify({ mcpServers: { azmcp: {
-    type: 'local', command: 'npx', args: ['-y', '@azure/mcp@latest', 'server', 'start', '--mode', 'all'], tools: ['*'],
+    type: 'local', command: 'npx', args: ['-y', '@azure/mcp@latest', 'server', 'start', '--mode', 'all',
+      ...AZURE_MCP_NAMESPACES.flatMap((name) => ['--namespace', name])], tools: ['*'],
   } } }));
   copilotArgs.push('--additional-mcp-config', `@${mcpConfigFile}`);
 }

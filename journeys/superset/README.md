@@ -388,6 +388,12 @@ Both are one-line fixes. Use the "When something fails" prompt, then rerun `azd 
 
 **Fix:** Put double quotes around the whole `--set-string` value in the hook's `helm upgrade` command, then rerun `azd up`. If the agent instead moves the health check inside the cluster, reject that change: the verifier checks the public URL because that's what you'll use.
 
+### Applying the Ingress fails with `failed calling webhook "validate.nginx.ingress.kubernetes.io"`
+
+**Cause:** The hook applied the Ingress seconds after installing NGINX, before its admission webhook had an endpoint. It's a race, so it doesn't happen every time.
+
+**Fix:** Use the "When something fails" prompt. The fix is to wait with `kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx` before applying the Ingress, then rerun `azd up`.
+
 ### ModuleNotFoundError: No module named 'psycopg2'
 
 **Also appears as:** `Context impl SQLiteImpl` in logs (should be `PostgresqlImpl`).
