@@ -90,3 +90,33 @@ Error `715-123420` can be attributed to `Microsoft.CognitiveServices/accounts` e
 ### Deployment Acceptance Criteria
 
 Deployment is complete only when every required check passes: `/api/health`, exactly 10 products, successful product images, non-empty semantic search, an assistant-shaped response to a product-comparison prompt that mentions **UltraBook Pro 15**, storefront HTTP 200, and the production API host in the built frontend assets. Use a comparison prompt rather than only a simple lookup so verification catches GPT-5 reasoning budgets that can be exhausted before visible content is produced. The journey README owns the command that executes these deployment checks. After completing the README assignment, run `azd down --force --purge`.
+
+## Infrastructure Gate
+
+Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turns the rules in [Azure Deployment](#azure-deployment), and the deployment failures that earlier runs of this journey hit, into checks with a deterministic exit code. Running it before `infra/` exists must fail. That's the red phase for infrastructure.
+
+**Portability:** Resolve every path relative to the project directory (the parent of the script's `scripts/` folder), not the current working directory. Use only the Node.js standard library. Invoke CLIs with argument arrays and `shell: false`. On Windows, run CLI shims such as `az` and `azd` through the PowerShell JSON-payload launcher pattern from `.github/scripts/_utils.mjs`, copied into the script rather than imported. Run Node.js itself with `process.execPath`.
+
+**Checks.** Print one `PASS` or `FAIL` line per check with a short reason, then exit `1` if any check failed:
+
+1. **Files:** `azure.yaml`, `infra/main.bicep`, `infra/main.parameters.json`, `infra/hooks/postprovision.js`, `infra/hooks/postdeploy.js`, `api/Dockerfile`, `api/.dockerignore`, `client/Dockerfile`, and `client/.dockerignore` exist.
+2. **azure.yaml:** Exactly one service, named `api`, with `host: containerapp`, `docker.remoteBuild: true`, and `docker.platform: linux/amd64`. Its Dockerfile, resolved from the service's `project` folder plus `docker.path`, exists. `hooks.postprovision.run` and `hooks.postdeploy.run` point to the two `.js` hooks, and there is no `shell: sh`.
+3. **Hooks:** `node --check` passes for both hooks. Neither contains `curl`, `grep`, or `shell: true`. The postprovision hook runs `az containerapp registry set` with `--identity system` and confirms the result with `az containerapp registry list`, because Azure can return an error for a setting it saved. The postdeploy hook runs `az acr build` with `--platform linux/amd64` and passes `VITE_API_URL`.
+4. **Containers:** Every `.dockerignore` lists `node_modules`, `.env`, and `.git`. `client/Dockerfile` declares `ARG VITE_API_URL`, and no nginx configuration under `client/` has a `location /api` block.
+5. **Build:** `az bicep build --file infra/main.bicep --stdout` exits `0` and prints valid JSON. Ignore the Bicep CLI's "a new Bicep release is available" notice.
+6. **Lint:** `az bicep lint --file infra/main.bicep` reports no errors.
+7. **Contract rules** on the compiled JSON. Walk the whole tree, including nested module templates. Evaluate literal values and `{ "value": ... }` parameter assignments, and ignore parameter declarations (objects with a `type` key). For ARM expressions (strings that start with `[`), search for the required literal inside the expression. Only deployable resource properties count: `metadata`, outputs (except where a rule names outputs), variables, and comments never satisfy a rule. An agent that can't pass a rule must change the real resource or report the gap, not add a literal elsewhere.
+   - The top-level outputs include `API_URL`, `WEB_URL`, and `AZURE_CONTAINER_REGISTRY_ENDPOINT`.
+   - Two `Microsoft.App/containerApps` resources carry the tags `azd-service-name: api` and `azd-service-name: web`.
+   - The Azure AI Search service uses the `basic` SKU, `semanticSearch: 'free'`, and `disableLocalAuth: false` where those are literals.
+   - A `Microsoft.CognitiveServices/accounts` resource of kind `AIServices` has a `gpt-5-mini` or `gpt-5.4-mini` model deployment.
+   - **No AI Services account name starts with `ai-`.** Check literal names, the first literal text inside a name expression, and any abbreviation value the name uses, including `infra/abbreviations.json`. On some subscriptions, every account named `ai-<token>` fails preflight with `715-123420` ("unusual activity"), and the preview doesn't catch it.
+   - The role definition IDs for `Cognitive Services User` (`a97b65f3-24c7-4388-baec-2e87135dc908`) and `AcrPull` (`7f951dda-4ed3-4680-a7ca-43fe172d538d`) appear.
+   - No expression reads a Cognitive Services key (`listKeys` on an AI Services account) or registry admin credentials (`listCredentials` on a registry).
+   - Every literal `zoneRedundant` is `false`.
+   - **No misused `resourceId()` in the subscription-scope template.** In a template whose `$schema` is a subscription deployment template, every bare `resourceId(` call (not `subscriptionResourceId(` or `extensionResourceId(`) either has two arguments or starts with `subscription().subscriptionId`. With three or more arguments, ARM reads the first one as a subscription ID, so a resource group name there fails `azd up` with `InvalidTemplate`, and the preview doesn't catch it.
+8. **Preview** (skipped with `--offline`): Confirm that `AZURE_SUBSCRIPTION_ID` and `AZURE_LOCATION` are set in the selected `azd` environment, then run `azd provision --preview --no-prompt` and require exit `0`. This asks Azure for a what-if result without creating resources.
+
+The script never prints secrets or app setting values.
+
+**Gate:** `node scripts/check-infra.mjs --offline` must pass before the read-only pre-deployment review, and `node scripts/check-infra.mjs` must pass before `azd up`.

@@ -171,11 +171,25 @@ This is the most expensive journey, so decide with the numbers in front of you. 
 
 Expect about $200 a month, most of it the two AKS nodes, and an explanation that matches [Why AKS](#why-aks-instead-of-container-apps). Don't trade down to one node to save money: Superset, the ingress controller, and the AKS run-command pod don't fit on one. If you only want to see the result, stop here: nothing has been created.
 
-### Step 3: Generate and preview
+### Step 3: Write the checks, then generate and preview
+
+Superset is the deployment most likely to fail after `azd up` has already spent 15 minutes creating a cluster, and `azd provision --preview` doesn't catch those failures. Earlier runs of this journey hit five of them: a one-node cluster, an unquoted Helm setting, an Ingress applied too early, a pinned database zone, and an invalid registry setting. So before any infrastructure exists, have the agent turn those lessons into a script:
+
+```
+> Create scripts/check-infra-superset.mjs exactly as
+  .github/skills/superset-azure/config/infrastructure-gate.md specifies.
+  Run it with --offline and show me that it fails because infra-superset/
+  doesn't exist yet. Commit only that script, and don't generate any
+  infrastructure yet.
+```
+
+Then generate the infrastructure until those checks pass:
 
 ```
 > Generate the infrastructure for that plan: Bicep and Kubernetes manifests
   in infra-superset/, azure.yaml, and infra-superset/hooks/postprovision.js.
+  Keep going until "node scripts/check-infra-superset.mjs --offline" passes,
+  and don't change that script.
   Generate secure passwords for all credentials and store them only in the
   azd environment. The hook must attach the Kubernetes manifests to
   `az aks command invoke`, run Helm and kubectl inside Azure, and poll the
@@ -192,6 +206,15 @@ Expect about $200 a month, most of it the two AKS nodes, and an explanation that
 </p>
 
 The agent loads the `superset-azure` skill and generates Bicep and Kubernetes manifests in `infra-superset/`. When you deploy, its post-provision hook creates the Superset secret key and admin password if they're missing (never printing them), then installs NGINX and Superset from inside Azure. Compare the preview with the plan from Step 2. If the preview shows anything the plan didn't, ask the agent why before you deploy.
+
+**Gate:** Before you deploy, both commands must exit `0`. The first adds an Azure preview to the checks; the second proves the agent passed them by changing the infrastructure, not the script:
+
+```text
+node scripts/check-infra-superset.mjs
+git diff --exit-code HEAD -- scripts/check-infra-superset.mjs
+```
+
+**💡 What you're learning:** The checks encode lessons from failed deployments, so each one runs in seconds instead of costing a failed `azd up`. Once a lesson can be checked by a program, stop relying on a prompt to remember it.
 
 ### Step 4: Deploy
 

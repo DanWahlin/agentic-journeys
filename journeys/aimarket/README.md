@@ -730,7 +730,22 @@ az cognitiveservices model list --location westus --query "[?model.name=='gpt-5-
 
 The command must list at least one supported model. Stop before provisioning if the result is empty.
 
-#### Step 1: Generate infrastructure
+#### Step 1: Write the infrastructure gate first
+
+Some Azure mistakes only show up in `azd up`, after minutes of provisioning, because `azd provision --preview` doesn't catch them. Earlier runs of this journey hit two: an AI Services account name that Azure rejects, and a `resourceId()` call that fails at deploy time. Write the checks before the infrastructure, the same way you'd write failing tests before code.
+
+📖 **Spec:** [Infrastructure Gate](./PLAN-phase4-azure.md#infrastructure-gate)
+
+```
+> Create scripts/check-infra.mjs exactly as the "Infrastructure Gate"
+  section of PLAN-phase4-azure.md specifies. Run it with --offline and show
+  me that it fails because the infrastructure doesn't exist yet. Commit it
+  and tag the commit phase4-red.
+```
+
+**💡 What you're learning:** You just turned the plan's deployment rules, and failures from earlier runs, into a program. It checks in seconds, for free, what would otherwise cost a failed deployment.
+
+#### Step 2: Generate infrastructure until the gate passes
 
 📖 **Spec:** [Azure Deployment](./PLAN-phase4-azure.md#azure-deployment) and [`container-apps-deployment` skill](../../.github/skills/container-apps-deployment/SKILL.md)
 
@@ -742,12 +757,22 @@ This context keeps the deployment prompt short:
   Apps: Bicep in infra/, Dockerfiles and .dockerignore files for api/ and
   client/, azure.yaml, and the required postprovision and postdeploy hooks wired into azure.yaml.
   Default stack: Node.js API + React client. Set the location to westus.
-  Log issues to issues.md.
+  Keep going until "node scripts/check-infra.mjs --offline" passes, and
+  don't change scripts/check-infra.mjs. Log issues to issues.md.
 ```
 
 If you're asked any questions after submitting the prompt, accept the recommended answers.
 
-After generation completes, run this read-only pre-deployment review.
+**Gate:** Both commands must exit `0`:
+
+```text
+node scripts/check-infra.mjs --offline
+git diff --exit-code phase4-red -- scripts/check-infra.mjs
+```
+
+The second command proves the agent passed the gate by changing the infrastructure, not the gate.
+
+The gate checks rules a program can check. Now run this read-only pre-deployment review for the ones that need judgment.
 
 📖 **Check against:** [Containerization](./PLAN-phase4-azure.md#containerization), [Azure Resources](./PLAN-phase4-azure.md#azure-resources), [AVM Validation and Raw Fallback](./PLAN-phase4-azure.md#avm-validation-and-raw-fallback), [Bicep Requirements](./PLAN-phase4-azure.md#bicep-requirements), and [Deployment](./PLAN-phase4-azure.md#deployment)
 
@@ -777,7 +802,7 @@ If the status is `NOT READY`, have Copilot fix only the failed checks, then reru
 
 **💡 What you're learning:** Small deployment details fail in different ways. A missing service tag stops `azd` from finding the API, an incomplete `.dockerignore` overwhelms the build, and Vite needs `VITE_API_URL` at build time even though the API URL only exists after provisioning, which is why a postdeploy hook rebuilds the storefront. Record each new lesson in the plan or a skill, not in a longer prompt.
 
-#### Step 2: Deploy
+#### Step 3: Deploy
 
 Read the subscription ID on the host machine:
 
@@ -791,7 +816,13 @@ If `azd env list` shows no environment, create one with `azd env new aimarket --
 azd env set AZURE_SUBSCRIPTION_ID <subscription-id>
 ```
 
-Start the deployment from the `journeys/aimarket` directory:
+Run the full gate, which adds an Azure preview. It deploys nothing:
+
+```text
+node scripts/check-infra.mjs
+```
+
+When it passes, start the deployment from the `journeys/aimarket` directory:
 
 ```text
 azd up
@@ -803,7 +834,7 @@ Wait until `azd up` and its `postdeploy` hook both succeed. If `azd` offers to c
 
 If `azd up` fails, use the "When something fails" prompt in the same session.
 
-#### Step 3: Verify the live deployment
+#### Step 4: Verify the live deployment
 
 Run the verifier from the `journeys/aimarket` directory on the host machine:
 
@@ -1012,7 +1043,7 @@ The `ARG VITE_API_URL` line must come BEFORE the `npm run build` step in `client
 
 ## Verification Checklist
 
-Use the acceptance contract in [Phase 4, Step 3](#step-3-verify-the-live-deployment), then run `node ../../.github/scripts/verify-aimarket.mjs` from `journeys/aimarket`.
+Use the acceptance contract in [Phase 4, Step 4](#step-4-verify-the-live-deployment), then run `node ../../.github/scripts/verify-aimarket.mjs` from `journeys/aimarket`.
 
 </details>
 
