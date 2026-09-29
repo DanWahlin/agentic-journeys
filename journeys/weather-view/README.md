@@ -155,6 +155,8 @@ resolution in issues.md. Do not print secrets.
 
 After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
+If the journey itself looks wrong, not just your run of it, [report a journey problem](https://github.com/microsoft/agentic-journeys/issues/new?template=journey-failure.yml).
+
 </details>
 
 ### Phase 1: Build the Weather Experience
@@ -723,6 +725,24 @@ Do not call the deployment complete from HTTP 200 alone.
 | Generated a verifier before running it | Make acceptance criteria executable |
 | Generated Bicep with Azure Skills and ran `azd up` | Deploy a static site with no backend, token, or pipeline |
 | Verified the live site and captured a screenshot | Prove a deployment works, not just that it returned HTTP 200 |
+
+---
+
+<details>
+<summary>Lessons from validation runs</summary>
+
+## Lessons from Validation Runs
+
+This journey was validated end to end several times. Each rule below exists because a run broke without it:
+
+- **The agent edited this tutorial.** Prompts that asked it to "document" the test and verify commands made it write them into this README. Hence: those prompts say "tell me", and `PLAN.md` says not to edit `README.md`.
+- **The code review built Phase 3 early.** Asked to review against the whole plan, `/review` flagged the missing Azure files, and the fix step created them. Hence: the Phase 2 review skips the "Azure Deployment" section.
+- **The pre-deployment review couldn't run its preview.** It ran before the `azd` environment existed. Hence: the agent prepares the environment first, then reviews.
+- **The deployed app logged a Content Security Policy error.** An inline theme script ran fine locally, where the server sends no policy header. Hence: no inline scripts, and the deployed browser check fails on console errors.
+- **`/rewind` left the files changed.** The default choice, **Conversation only**, keeps your files. Hence: the exercise says to pick **Conversation + files**. The throwaway prompt also says it's an experiment, because otherwise a careful agent stops and asks before breaking the five-card rule in `PLAN.md`.
+- **`azd up` couldn't find the app it had just created.** It looked the Static Web App up by tag seconds after creating it. Hence: the troubleshooting entry, whose fix is `azd deploy`.
+
+</details>
 
 ---
 

@@ -189,6 +189,8 @@ resolution in issues.md. Do not print secrets.
 
 After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
+If the journey itself looks wrong, not just your run of it, [report a journey problem](https://github.com/microsoft/agentic-journeys/issues/new?template=journey-failure.yml).
+
 </details>
 
 ### Phase 1: Build the API from the Spec
@@ -772,6 +774,15 @@ git diff --exit-code phase4-red -- scripts/check-infra.mjs
 
 The second command proves the agent passed the gate by changing the infrastructure, not the gate.
 
+If the agent shows that a gate check is wrong, for example because it can't read values passed into a module, don't let it edit the gate quietly. Read its explanation, and if you agree, fix the gate as a new red commit:
+
+```
+> Fix only the gate checks you showed are wrong, commit that as a new red
+  commit, and move the tag with git tag -f phase4-red. Then rerun
+  "node scripts/check-infra.mjs --offline" until it passes without other
+  changes to the gate.
+```
+
 The gate checks rules a program can check. Now run this read-only pre-deployment review for the ones that need judgment.
 
 📖 **Check against:** [Containerization](./PLAN-phase4-azure.md#containerization), [Azure Resources](./PLAN-phase4-azure.md#azure-resources), [AVM Validation and Raw Fallback](./PLAN-phase4-azure.md#avm-validation-and-raw-fallback), [Bicep Requirements](./PLAN-phase4-azure.md#bicep-requirements), and [Deployment](./PLAN-phase4-azure.md#deployment)
@@ -1061,6 +1072,26 @@ Use the acceptance contract in [Phase 4, Step 4](#step-4-verify-the-live-deploym
 | Deployed two Container Apps with `azd` and verified them | Solve build-time configuration with a postdeploy hook |
 
 SQLite is a starting point, not durable cloud storage: moving to Cosmos DB or PostgreSQL still needs a provider implementation, infrastructure, credentials, and configuration.
+
+---
+
+<details>
+<summary>Lessons from validation runs</summary>
+
+## Lessons from Validation Runs
+
+This journey was validated end to end several times. Each rule below exists because a run broke without it:
+
+- **Azure rejected the deployment as "unusual activity" (`715-123420`).** The agent concluded it was an Azure-side problem and suggested contacting support. The real cause: on some subscriptions, an AI Services account named `ai-<token>` always fails, and any other prefix passes. Hence: the `cog-` prefix, and a gate check for it.
+- **`azd up` failed with `InvalidTemplate` after the preview passed.** A `resourceId()` call passed a resource group name where Azure expects a subscription ID. Hence: a gate check for it. Both failures now cost seconds in `scripts/check-infra.mjs` instead of a failed deployment.
+- **`azd up` failed with `ResourceNotFound` for the search service.** The template read the Azure AI Search admin key in a deployment that could run before the service existed. The plan already warned about it, and the switch to AVM modules brought it back. Hence: a gate check for the ordering.
+- **The post-provision hook failed on a setting Azure had saved.** `az containerapp registry set` returned `InternalServerError` right after the app's identity was created. Hence: the hook confirms the setting and retries once.
+- **The agent wrote run instructions into this README**, even when asked to "tell me". Hence: `PLAN.md` says not to edit it.
+- **The review caught a verifier that didn't match the plan.** The plan requires a comparison question, which catches answers that run out of tokens, but the verifier asked a simple lookup. Hence: fix the verifier in the source, never in a learner's run.
+- **A test failed only after checking out the agent's branch.** `api/dist` still held files compiled from `main`. Hence: delete `api/dist` when a test reports `ERR_MODULE_NOT_FOUND`.
+- **Copilot code review asked for a runtime model fallback, twice.** The plan picks the model at deployment time, so the right response was to decline with a reason. Not every review comment needs a code change.
+
+</details>
 
 ---
 

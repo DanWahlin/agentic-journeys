@@ -140,6 +140,8 @@ resolution in issues.md. Do not print secrets.
 
 After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
+If the journey itself looks wrong, not just your run of it, [report a journey problem](https://github.com/microsoft/agentic-journeys/issues/new?template=journey-failure.yml).
+
 </details>
 
 ### Step 1: Setup
@@ -173,7 +175,7 @@ Expect about $200 a month, most of it the two AKS nodes, and an explanation that
 
 ### Step 3: Write the checks, then generate and preview
 
-Superset is the deployment most likely to fail after `azd up` has already spent 15 minutes creating a cluster, and `azd provision --preview` doesn't catch those failures. Earlier runs of this journey hit five of them: a one-node cluster, an unquoted Helm setting, an Ingress applied too early, a pinned database zone, and an invalid registry setting. So before any infrastructure exists, have the agent turn those lessons into a script:
+Superset is the deployment most likely to fail after `azd up` has already spent 15 minutes creating a cluster, and `azd provision --preview` doesn't catch those failures. Earlier runs of this journey hit six of them: a one-node cluster, an unquoted Helm setting, an Ingress applied too early, a pinned database zone, an invalid registry setting, and a hook that looked for the project in the wrong folder. So before any infrastructure exists, have the agent turn those lessons into a script:
 
 ```
 > Create scripts/check-infra-superset.mjs exactly as
@@ -504,6 +506,24 @@ Ask the agent:
 - **Workload requirements drive the hosting choice.** Superset's init containers, shared volumes, and ConfigMap mounts make AKS a better fit than Container Apps.
 - **emptyDir volumes share data between init and main containers.** This is the pattern for installing runtime dependencies.
 - **"SQLiteImpl" in logs means misconfiguration.** If you see this, the PostgreSQL connection string isn't reaching Superset.
+
+---
+
+<details>
+<summary>Lessons from validation runs</summary>
+
+## Lessons from Validation Runs
+
+This journey was validated end to end several times, and it's the one most likely to fail after `azd up` has already spent 15 minutes creating a cluster. Each rule below exists because a run broke without it, and `azd provision --preview` caught none of them:
+
+- **`az aks command invoke` failed with `invalid status 'OK'`.** On one node, Superset and NGINX left no room for the run-command pod. Hence: two nodes.
+- **The public URL timed out while the pod was healthy.** An unquoted Helm setting lost its backslashes in the remote shell, so the load balancer probed `/` and dropped all traffic. The agent's first "fix" moved the verifier's check inside the cluster so it would pass. Hence: the setting is quoted, and a fix may never change the checked-in verifier.
+- **Applying the Ingress failed intermittently.** The hook applied it before NGINX's admission webhook had an endpoint. Hence: the hook waits for the controller first.
+- **`azd up` failed on the database and the registry.** The Bicep pinned PostgreSQL to an availability zone that isn't offered everywhere, and combined registry settings that Azure rejects. Hence: no pinned zone, and no disabled export policy with public access.
+- **The hook failed with only `azd failed (1)`.** It resolved the repository root one folder too high, so its `azd` commands ran in the wrong place. Hence: the hook supports `--dry-run`, which prints the root it found.
+- **Six failures, one lesson.** Every rule above is now a check in `scripts/check-infra-superset.mjs`, which you write before the infrastructure. It catches each of them in seconds.
+
+</details>
 
 ---
 

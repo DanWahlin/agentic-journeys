@@ -112,6 +112,8 @@ resolution in issues.md. Do not print secrets.
 
 After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
+If the journey itself looks wrong, not just your run of it, [report a journey problem](https://github.com/microsoft/agentic-journeys/issues/new?template=journey-failure.yml).
+
 </details>
 
 ### Step 1: Setup
@@ -405,6 +407,23 @@ param n8nEncryptionKey string = newGuid()
 - **Azure MCP tools provide current Bicep schemas.** This lets the agent use actual API versions instead of guessing.
 - **Register providers first.** This prevents 409 conflicts during deployment.
 - **Same agent, different skills.** The agent loaded `n8n-azure` and adapted to n8n's specific requirements automatically.
+
+---
+
+<details>
+<summary>Lessons from validation runs</summary>
+
+## Lessons from Validation Runs
+
+This journey was validated end to end several times. Each rule below exists because a run broke without it:
+
+- **The container restarted in a loop.** n8n takes more than a minute to start, and default probes killed it first; probes on `/` also timed out. Hence: `/healthz` for every probe, a 60-second liveness delay, and a five-minute startup window.
+- **One healthy response wasn't enough.** Setting `WEBHOOK_URL` starts a new revision, and a check could still reach the old one. Hence: the post-provision hook waits for six consecutive healthy responses over 30 seconds.
+- **The database wouldn't accept connections.** The PostgreSQL module defaults to no public access and no password authentication, and high availability isn't allowed on the Burstable tier. Hence: those settings are explicit in the `n8n-azure` skill.
+- **Authentication failed after a redeploy.** A password generated with `newGuid()` changed on every `azd up`, while the database kept the first one. Hence: generate passwords once and pin them in the `azd` environment.
+- **A preview passed, then `azd up` failed with `NoRegisteredProviderFound`.** The generated Bicep used a PostgreSQL API version that doesn't exist. Hence: API version `2024-08-01`, checked against the Azure MCP Bicep schema tool.
+
+</details>
 
 ---
 

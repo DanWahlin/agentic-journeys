@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Agentic fundamentals
+    url: https://github.com/microsoft/agentic-journeys/blob/main/docs/agentic-fundamentals.md
+    about: The techniques the journeys teach, and where to practice each one.

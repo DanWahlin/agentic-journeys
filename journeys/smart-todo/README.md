@@ -163,6 +163,8 @@ fix for the pull request's "Problems and fixes" section. Do not print
 secrets.
 ```
 
+If the journey itself looks wrong, not just your run of it, [report a journey problem](https://github.com/microsoft/agentic-journeys/issues/new?template=journey-failure.yml).
+
 </details>
 
 ### Short on time? Start at a later phase

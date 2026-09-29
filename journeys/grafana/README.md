@@ -108,6 +108,8 @@ resolution in issues.md. Do not print secrets.
 
 After the fix, run `git diff -- :/.github/scripts`. It must print nothing: a fix that edits the checked-in verifier hides the problem instead of solving it. If the fix doesn't hold, ask again, and don't accept "contact support" until the agent has narrowed the failure to one resource or setting.
 
+If the journey itself looks wrong, not just your run of it, [report a journey problem](https://github.com/microsoft/agentic-journeys/issues/new?template=journey-failure.yml).
+
 </details>
 
 ### Step 1: Setup
@@ -373,6 +375,22 @@ resources: {
 - **Scale-to-zero cold starts are normal.** 30-60s on first request isn't an error.
 - **Same agent, different skills.** The agent loaded `grafana-azure` instead of `n8n-azure` and adapted automatically.
 - **Simpler apps mean simpler infrastructure.** No database dependency means fewer moving parts to break.
+
+---
+
+<details>
+<summary>Lessons from validation runs</summary>
+
+## Lessons from Validation Runs
+
+This journey was validated end to end several times. Recent runs passed on the first try, and earlier ones produced these rules:
+
+- **The first request after idle returned 502.** With `minReplicas: 0`, Grafana scales to zero, and the first request waits 30 to 60 seconds for a cold start. Hence: wait and retry before you debug, and point probes and the verifier at `/api/health`, which also reports database status.
+- **Dashboards disappeared after a restart.** SQLite lives in the container's local storage. That's by design in this journey, and the [Assignment](#assignment) lets you see it happen. Hence: use PostgreSQL or an Azure Files mount for anything you want to keep.
+- **More replicas would have split the data.** Each replica would get its own SQLite database, so users and dashboards would differ from request to request. Hence: `maxReplicas: 1` while Grafana uses SQLite.
+- **Generated passwords got weakened to survive shell quoting.** Hence: pass secrets through argument arrays or environment variables, never through an interpolated shell command.
+
+</details>
 
 ---
 
