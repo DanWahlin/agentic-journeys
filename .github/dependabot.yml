@@ -9,3 +9,14 @@ updates:
       interval: "weekly"
     cooldown:
       default-days: 7
+
+  # SmartTodo checkpoints are finished snapshots that setup.mjs --start-at copies
+  # into a learner's workspace. They aren't maintained code, so Dependabot skips
+  # them for version and security updates. Refresh them by rerunning the journey.
+  - package-ecosystem: "npm"
+    directories:
+      - "/journeys/smart-todo/checkpoints/**"
+    schedule:
+      interval: "monthly"
+    ignore:
+      - dependency-name: "*"

@@ -37,6 +37,8 @@ timeout-minutes: 120
 concurrency:
   group: "gh-aw-${{ github.workflow }}-${{ github.event.inputs.journey || 'all' }}"
   cancel-in-progress: false
+  # The weekly dispatcher starts every journey at once; give each run its own slot.
+  job-discriminator: ${{ github.run_id }}
 
 env:
   AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
@@ -50,6 +52,11 @@ engine:
   model: claude-sonnet-5
 
 strict: false
+# The journey runs az, azd, and Copilot CLI against real Azure resources, so the
+# agent runs without the gh-aw sandbox (unchanged since the first version of this
+# workflow). gh-aw v0.89 requires this opt-out to be explicit.
+features:
+  dangerously-disable-sandbox-agent: true
 sandbox:
   agent: false
 
@@ -67,11 +74,23 @@ tools:
     toolsets: [repos]
 
 network:
+  # gh-aw removed the "azure" ecosystem, so the Azure domains are listed here.
+  # Listed domains include their subdomains.
   allowed:
     - defaults
     - python
     - node
-    - azure
+    - azure.com
+    - azure.net
+    - windows.net
+    - microsoftonline.com
+    - azurecr.io
+    - azurecontainerapps.io
+    - azurestaticapps.net
+    - azurewebsites.net
+    - microsoft.com
+    - aka.ms
+    - open-meteo.com
 
 ---
 

@@ -1,0 +1,46 @@
+name: Portable scripts (Linux, Windows, macOS)
+
+# Runs the scripts every journey relies on (prompt extraction, workspace setup, the
+# SmartTodo infrastructure gate, and the journey-runner helpers) on all three
+# operating systems. No Azure or Copilot credentials are needed.
+
+on:
+  pull_request:
+    paths:
+      - ".github/scripts/**"
+      - ".github/skills/journey-runner/scripts/**"
+      - "journeys/*/README.md"
+      - "journeys/smart-todo/setup/**"
+      - "journeys/smart-todo/scripts/**"
+      - "journeys/smart-todo/checkpoints/**"
+      - ".github/workflows/portable-scripts.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-scripts:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+
+      - name: Configure Git identity for workspace commits
+        run: |
+          git config --global user.name "portable-scripts"
+          git config --global user.email "portable-scripts@users.noreply.github.com"
+
+      - name: Install the Bicep CLI for the infrastructure gate
+        run: az bicep install
+
+      - name: Run the portable script checks
+        run: node .github/scripts/test-portable-scripts.mjs
