@@ -143,7 +143,10 @@ function copilotInvocation() {
   return loader && existsSync(loader) ? { file: process.execPath, prefix: [loader] } : { file: 'copilot', prefix: [] };
 }
 const invocation = copilotInvocation();
-const child = spawn(invocation.file, [...invocation.prefix, ...copilotArgs], { cwd, env, shell: false });
+// detached on Windows: Copilot and everything it starts get their own process group and
+// console, so an agent that runs `taskkill /T` on a server it started can't take down the
+// caller. Output still flows through the pipes below.
+const child = spawn(invocation.file, [...invocation.prefix, ...copilotArgs], { cwd, env, shell: false, detached: process.platform === 'win32', windowsHide: true });
 const forward = (stream) => (chunk) => {
   const text = chunk.toString();
   output += text.length > 200000 ? '' : text;

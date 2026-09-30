@@ -110,6 +110,7 @@ jobs:
             ${{ env.RUN_DIR }}/progress.log
             ${{ env.RUN_DIR }}/logs/
             ${{ env.RUN_DIR }}/prompts-used/
+            ${{ env.RUN_DIR }}/timing.jsonl
           if-no-files-found: warn
           retention-days: 14
 

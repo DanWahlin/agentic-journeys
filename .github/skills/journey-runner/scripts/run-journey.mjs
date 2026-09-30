@@ -75,7 +75,7 @@ function cmd(label, command, commandArgs, { cwd, env, allowFail = false, timeout
   const file = join(logDir, `${String(++stepCount).padStart(2, '0')}-${slug(label)}.log`);
   const started = Date.now();
   const inv = invocation(command, commandArgs);
-  const out = spawnSync(inv.file, inv.args, { cwd, env: { ...process.env, ...env }, shell: inv.shell, encoding: 'utf8', timeout: timeoutMinutes * 60000, maxBuffer: 64 * 1024 * 1024 });
+  const out = spawnSync(inv.file, inv.args, { cwd, env: { ...process.env, ...env }, shell: inv.shell, encoding: 'utf8', timeout: timeoutMinutes * 60000, killSignal: 'SIGKILL', maxBuffer: 256 * 1024 * 1024, windowsHide: true });
   const output = `${out.stdout ?? ''}${out.stderr ?? ''}${out.error ? `\n${out.error.message}` : ''}`;
   writeFileSync(file, `$ ${command} ${commandArgs.join(' ')} (cwd ${cwd})\n${output}\n--- exit ${out.status} ---\n`);
   appendFileSync(record, `${JSON.stringify({ label, kind: 'command', started: new Date(started).toISOString(), seconds: Math.round((Date.now() - started) / 1000), exit: out.status })}\n`);
@@ -87,8 +87,10 @@ function startBackground(label, command, commandArgs, { cwd, env } = {}) {
   const file = join(logDir, `bg-${slug(label)}.log`);
   const inv = invocation(command, commandArgs);
   const child = spawn(inv.file, inv.args, { cwd, env: { ...process.env, ...env }, shell: inv.shell, detached: !isWindows, stdio: ['ignore', 'pipe', 'pipe'] });
-  child.stdout.on('data', (d) => appendFileSync(file, d));
-  child.stderr.on('data', (d) => appendFileSync(file, d));
+  const write = (d) => { try { appendFileSync(file, d); } catch {} };
+  child.stdout.on('data', write);
+  child.stderr.on('data', write);
+  child.on('error', (error) => write(`\n${error.message}\n`));
   child.done = new Promise((done) => child.on('close', (code) => done(code)));
   background.push(child);
   return child;
@@ -145,8 +147,9 @@ function prompt(match, { cwd, session = 'main', agent, mode, fill = {}, extra = 
   if (mode) flags.push('--mode', mode);
   if (mode === 'autopilot') flags.push('--max-autopilot-continues', '10');
   log(`PROMPT [${session}] ${text.split('\n')[0].slice(0, 90)}`);
-  const out = spawnSync(process.execPath, [join(scripts, 'run-copilot-prompt.mjs'), ...flags], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const out = spawnSync(process.execPath, [join(scripts, 'run-copilot-prompt.mjs'), ...flags], { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, windowsHide: true });
   const logText = readFileSync(join(logDir, `${String(stepCount).padStart(2, '0')}-${name}.log`), 'utf8');
+  try { writeRedactedLogs(); } catch {}
   if (out.status !== 0) throw new Error(`prompt "${name}" exited ${out.status}`);
   checkVerifiers(`after "${name}"`);
   return logText.slice(logText.indexOf('--- output ---'));
@@ -500,6 +503,19 @@ function writeReport(error) {
 
 // --- main -------------------------------------------------------------------------------
 
+// Anything that escapes the try/finally below still gets cleanup and a report.
+let finished = false;
+async function emergency(label, error) {
+  if (finished) return;
+  finished = true;
+  log(`STOPPED (${label}): ${error?.stack ?? error}`);
+  try { if (!keep) cleanup(); } catch (cleanupError) { log(`cleanup failed: ${cleanupError.message}`); }
+  try { writeReport(error instanceof Error ? error : new Error(String(error))); } catch {}
+  process.exit(1);
+}
+process.on('uncaughtException', (error) => emergency('uncaught exception', error));
+process.on('unhandledRejection', (error) => emergency('unhandled rejection', error));
+
 // A cancelled or timed-out job skips the finally block, so CI calls this separately.
 if (cleanupOnly) {
   const walk = (dir, depth = 0) => {
@@ -538,6 +554,7 @@ try {
   if (keep) note('--keep: Azure resources were left running');
   else cleanup();
   refresher?.kill();
+  finished = true;
   const verdict = writeReport(failure);
   log(`\n${verdict}\nReport: ${join(runDir, 'run-report.md')}`);
   process.exitCode = failure || results.some((r) => !r.ok && r.name.startsWith('cleanup')) ? 1 : 0;
