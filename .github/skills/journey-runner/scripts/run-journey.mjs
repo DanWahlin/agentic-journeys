@@ -215,7 +215,8 @@ function cleanup() {
       const left = cmd(`resources left for ${name}`, 'az', ['resource', 'list', '--tag', `azd-env-name=${name}`, '--query', 'length(@)', '-o', 'tsv'], { cwd, allowFail: true });
       const groups = cmd(`groups left for ${name}`, 'az', ['group', 'list', '--tag', `azd-env-name=${name}`, '--query', 'length(@)', '-o', 'tsv'], { cwd, allowFail: true });
       const remaining = Number(left.output.trim() || 0) + Number(groups.output.trim() || 0);
-      result(`cleanup ${name}`, down.status === 0 && remaining === 0, `${remaining} tagged resources or groups remain`);
+      // What counts is what's left in Azure: azd down also exits nonzero when a run already deleted everything.
+      result(`cleanup ${name}`, remaining === 0, `${remaining} tagged resources or groups remain${down.status === 0 ? '' : ` (azd down exited ${down.status})`}`);
     }
   }
 }
