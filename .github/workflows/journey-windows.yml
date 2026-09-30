@@ -87,9 +87,16 @@ jobs:
         if: steps.pick.outputs.journey == 'smart-todo'
         shell: pwsh
         run: |
-          npm install --global azure-functions-core-tools@4 --unsafe-perm true
-          choco install sqlcmd --yes --no-progress
+          npm install --global azure-functions-core-tools@4 --allow-scripts=azure-functions-core-tools
           func --version
+          # The Go-based sqlcmd from its official release, on PATH for later steps.
+          $dir = Join-Path $env:RUNNER_TEMP "sqlcmd"
+          gh release download --repo microsoft/go-sqlcmd --pattern "sqlcmd-windows-amd64.zip" --dir $dir
+          Expand-Archive -Path (Join-Path $dir "sqlcmd-windows-amd64.zip") -DestinationPath $dir -Force
+          & (Join-Path $dir "sqlcmd.exe") --version
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Run the journey
         shell: pwsh
