@@ -168,6 +168,14 @@ node scripts/run-command.mjs --label "azd up" --log <run-dir>/logs/azd-up.log --
 
 At the end, `node scripts/summarize-run.mjs --record <run-dir>/timing.jsonl` prints a step table and totals for `run-report.md`. It counts each session's highest credit total once, because resumed sessions report a running total.
 
+### Unattended runs and other operating systems
+
+`node scripts/run-journey.mjs <journey> [--run-dir <dir>] [--location westus]` runs one journey end to end with these helpers: the README's prompts, the journey's gates and checked-in verifier, `azd up` with one "When something fails" repair, and `azd down --force --purge` in a `finally` block. It reverts and reports any agent edit to `.github/scripts`, writes `run-report.md` and redacted logs, and lists every step it skipped: interactive-only commands (`/rewind`, `/fork`, `/delegate`), steps that need a disposable GitHub repository (SmartTodo's 🐙 steps, AIMarket's cloud agent), and iOS work off macOS. `--cleanup-only --run-dir <dir>` deletes what an interrupted run left behind.
+
+The `journey-windows` workflow runs it on a GitHub-hosted `windows-latest` runner, for any journey, from `workflow_dispatch` or by pushing a `run/windows/<journey>` branch. It signs in to Azure with OIDC through a GitHub environment named `journey-windows` that holds `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID` as variables, with no stored Azure secret. Give the Entra app **Contributor** on the subscription and **Role Based Access Control Administrator** with a condition that allows only the data-plane roles the journeys assign (AcrPull, Cognitive Services User and OpenAI User, the Storage Blob, Queue, and Table data roles, Network Contributor, Monitoring Metrics Publisher, and Key Vault Secrets User). GitHub may issue the OIDC subject with immutable IDs (`repo:<owner>@<id>/<repo>@<id>:environment:journey-windows`); if sign-in fails with `AADSTS700213`, create the federated credential with the exact subject the error prints.
+
+Don't route around a device-management policy to reach a managed machine: an Intune-managed PC that blocks inbound SSH, or refuses device-code sign-ins, should be tested through the hosted runner instead.
+
 Before launching a batch, run `copilot --help` and one harmless prompt smoke test. If that fails, do not start parallel or background journey processes.
 
 Execute prompts sequentially within a journey. Wait for each prompt to finish, inspect the files it produced, and only then continue.

@@ -6,8 +6,10 @@ name: Journey on Windows
 #
 # Needs a GitHub environment named `journey-windows` with variables AZURE_CLIENT_ID,
 # AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID for an Entra app whose federated credential
-# trusts `repo:<owner>/<repo>:environment:journey-windows`, and a COPILOT_GITHUB_TOKEN
-# secret. See .github/skills/journey-runner/SKILL.md.
+# trusts this environment's OIDC subject, and a COPILOT_GITHUB_TOKEN secret. GitHub can
+# issue the subject with immutable IDs (`repo:<owner>@<id>/<repo>@<id>:environment:journey-windows`);
+# if Azure sign-in fails with AADSTS700213, copy the subject it prints into the credential.
+# See .github/skills/journey-runner/SKILL.md.
 
 on:
   workflow_dispatch:

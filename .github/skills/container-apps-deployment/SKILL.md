@@ -50,6 +50,10 @@ services:
 
 Declare each service whose image azd owns this way. AIMarket declares only `api`; Bicep creates its web Container App and the project postdeploy hook owns the storefront ACR build and update. **Without `language`:** `azd up` fails with "must specify language or image". **Without `remoteBuild: true`:** `azd` can require a local Docker daemon.
 
+### Public images: no azd service
+
+When a Container App runs a public image that you don't build (Grafana, n8n), set the image in Bicep and leave `services:` out of `azure.yaml`, so `azure.yaml` has only `infra` and `hooks`. `azd provision` (or `azd up`) then creates everything. A service with `image: grafana/grafana` makes azd pull the image through a local Docker daemon during packaging, so the deployment requires Docker, and on Windows, where Docker often runs Windows containers, it fails with `no matching manifest for windows`.
+
 ### Cross-platform hooks
 
 This repository requires `azd` 1.28.0 or later and Node.js LTS or later. Use JavaScript or TypeScript hooks referenced directly from `azure.yaml`; `azd` detects the language from the extension. Do not generate Bash-only `.sh` or PowerShell-only `.ps1` lifecycle hooks.

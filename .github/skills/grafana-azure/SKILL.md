@@ -13,6 +13,9 @@ Deploy Grafana OSS to Azure Container Apps using Bicep and Azure Developer CLI (
 
 Grafana is an open-source observability platform for metrics, logs, and traces visualization. This skill deploys Grafana OSS (not Azure Managed Grafana) to Azure Container Apps.
 
+
+**`azure.yaml` has no `services:` block.** The Container App's public image is set in Bicep, so azd has nothing to package. A service with `image:` makes azd pull the image through local Docker, which fails on Windows hosts running Windows containers and makes Docker a requirement. See the [container-apps-deployment skill](../container-apps-deployment/SKILL.md#public-images-no-azd-service).
+
 ## Prerequisites and Portability
 
 Require Azure CLI, Azure Developer CLI 1.28.0 or later, and Node.js LTS or later for portable verification. Don't require OpenSSL, Bash command substitution, or host-specific shell scripts. See `../../../docs/tool-installation.md`.
