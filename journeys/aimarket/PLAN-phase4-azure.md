@@ -118,6 +118,6 @@ Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turn
    - **No misused `resourceId()` in the subscription-scope template.** Apply this only to expressions in a template whose own `$schema` is a subscription deployment template, not to templates nested inside it. There, every bare `resourceId(` call (not `subscriptionResourceId(` or `extensionResourceId(`) either has two arguments or starts with `subscription().subscriptionId`. With three or more arguments, ARM reads the first one as a subscription ID, so a resource group name there fails `azd up` with `InvalidTemplate`, and the preview doesn't catch it.
 8. **Preview** (skipped with `--offline`): Confirm that `AZURE_SUBSCRIPTION_ID` and `AZURE_LOCATION` are set in the selected `azd` environment, then run `azd provision --preview --no-prompt` and require exit `0`. This asks Azure for a what-if result without creating resources.
 
-The script never prints secrets or app setting values.
+The script never prints secrets or app setting values. When a CLI check fails, print the last 20 lines of its output (with secrets removed) under the `FAIL` line, so the reason is visible without rerunning it.
 
 **Gate:** `node scripts/check-infra.mjs --offline` must pass before the read-only pre-deployment review, and `node scripts/check-infra.mjs` must pass before `azd up`.

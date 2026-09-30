@@ -214,7 +214,7 @@ Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turn
    - When raw `Microsoft.CognitiveServices/accounts/deployments` resources appear, they're in a nested deployment separate from the template that creates the account.
 7. **Preview** (skipped with `--offline`): Confirm that `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, and `AZURE_PRINCIPAL_TYPE` are set in the selected `azd` environment, then run `azd provision --preview --no-prompt` and require exit `0`. This asks Azure for a what-if result without creating resources.
 
-The script never prints secrets or app setting values. The `infra` CI job runs it with `--offline` because CI has no Azure credentials.
+The script never prints secrets or app setting values. When a CLI check fails, print the last 20 lines of its output (with secrets removed) under the `FAIL` line, so the reason is visible without rerunning it. The `infra` CI job runs it with `--offline` because CI has no Azure credentials.
 
 **Gate:** `node scripts/check-infra.mjs --offline` must pass before a pull request merges, and `node scripts/check-infra.mjs` must pass before `azd up`.
 

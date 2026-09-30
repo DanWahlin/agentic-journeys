@@ -33,7 +33,7 @@ Print one `PASS` or `FAIL` line per check with a short reason, then exit `1` if 
    - The top-level outputs include a resource group name (`AZURE_RESOURCE_GROUP`, `AZURE_RESOURCE_GROUP_NAME`, or `RESOURCE_GROUP_NAME`) and a cluster name (`AZURE_AKS_CLUSTER_NAME` or `AKS_CLUSTER_NAME`), which the journey verifier reads.
 7. **Preview** (skipped with `--offline`): Confirm that `AZURE_SUBSCRIPTION_ID` and `AZURE_LOCATION` are set in the selected `azd` environment, then run `azd provision --preview --no-prompt` and require exit `0`.
 
-The script never prints secrets.
+The script never prints secrets. When a CLI check fails, print the last 20 lines of its output (with secrets removed) under the `FAIL` line, so the reason is visible without rerunning it.
 
 ## Gate
 

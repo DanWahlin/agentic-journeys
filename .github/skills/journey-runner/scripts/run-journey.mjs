@@ -199,6 +199,11 @@ function gate(label, command, commandArgs, opts) {
   const out = cmd(label, command, commandArgs, { ...opts, allowFail: true });
   const last = out.output.trim().split('\n').filter((l) => /PASS|FAIL|passed|failed/i.test(l)).pop() ?? '';
   result(label, out.status === 0, last.slice(0, 200));
+  // Gates written before the output rule may hide why azd failed; capture it for the report.
+  if (out.status !== 0 && /FAIL[^\n]*preview/i.test(out.output) && opts?.cwd) {
+    const preview = cmd('azd provision --preview (diagnostic)', 'azd', ['provision', '--preview', '--no-prompt'], { cwd: opts.cwd, allowFail: true, timeoutMinutes: 20 });
+    note(`preview diagnostic: ${redactTail(preview.output, 6).replace(/\n/g, ' / ').slice(0, 400)}`);
+  }
   if (out.status !== 0 && !opts?.soft) throw new Error(`${label} failed`);
   return out;
 }
