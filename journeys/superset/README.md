@@ -175,7 +175,7 @@ Expect about $200 a month, most of it the two AKS nodes, and an explanation that
 
 ### Step 3: Write the checks, then generate and preview
 
-Superset is the deployment most likely to fail after `azd up` has already spent 15 minutes creating a cluster, and `azd provision --preview` doesn't catch those failures. Earlier runs of this journey hit seven of them: a one-node cluster, an unquoted Helm setting, an Ingress applied too early, a pinned database zone, an invalid registry setting, a hook that looked for the project in the wrong folder, and hook commands that Windows couldn't pass along. So before any infrastructure exists, have the agent turn those lessons into a script:
+Superset is the deployment most likely to fail after `azd up` has already spent 15 minutes creating a cluster, and `azd provision --preview` doesn't catch those failures. Earlier runs of this journey hit nine of them: a one-node cluster, an unquoted Helm setting, an Ingress applied too early, a pinned database zone, an invalid registry setting, a hook that looked for the project in the wrong folder, hook commands that Windows couldn't pass along, a secret file applied by the wrong name, and a missing database driver path. So before any infrastructure exists, have the agent turn those lessons into a script:
 
 ```
 > Create scripts/check-infra-superset.mjs exactly as
@@ -522,7 +522,8 @@ This journey was validated end to end several times, and it's the one most likel
 - **`azd up` failed on the database and the registry.** The Bicep pinned PostgreSQL to an availability zone that isn't offered everywhere, and combined registry settings that Azure rejects. Hence: no pinned zone, and no disabled export policy with public access.
 - **The same hook failed on Windows four ways.** Its commands to `az aks command invoke` used double quotes and `&&`, which the Windows launcher rejects, and Helm's banner made `az` crash on a Windows console. Fixing the quotes then broke the load balancer setting again. Hence: remote commands use `; ` instead of `&&` and no quotes, and the setting's dots use a doubled backslash, which works on every OS.
 - **The hook failed with only `azd failed (1)`.** It resolved the repository root one folder too high, so its `azd` commands ran in the wrong place. Hence: the hook supports `--dry-run`, which prints the root it found.
-- **Seven failures, one lesson.** Every rule above is now a check in `scripts/check-infra-superset.mjs`, which you write before the infrastructure. It catches each of them in seconds.
+- **A secret never reached the cluster, and a check couldn't import the database driver.** `az aks command invoke` keeps only a file's base name, so a randomly named secret file didn't match the name the hook applied. `PYTHONPATH` set with `export` in the start command was invisible to `kubectl exec`. Hence: fixed file names inside a random folder, and `PYTHONPATH` declared as a container variable.
+- **Nine failures, one lesson.** Every rule above is now a check in `scripts/check-infra-superset.mjs`, which you write before the infrastructure. It catches each of them in seconds.
 
 </details>
 
