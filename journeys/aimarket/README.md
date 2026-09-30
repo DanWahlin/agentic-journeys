@@ -1014,6 +1014,12 @@ az provider register --namespace Microsoft.OperationalInsights
 
 **Fix:** Use the "When something fails" prompt. The fix passes `subscription().subscriptionId` as the first argument, or uses the resource's `.id` property instead.
 
+### The postdeploy hook fails with `UnicodeEncodeError: 'charmap' codec can't encode character`
+
+**Cause:** On Windows, `az acr build` streams the build log to a console that can't print some characters, such as ✓, so `az` crashes even though the build succeeded in Azure.
+
+**Fix:** Add `--no-logs` to the `az acr build` command in `infra/hooks/postdeploy.js`. It still waits for the build and reports failure. Then rerun `node infra/hooks/postdeploy.js`.
+
 ### The post-provision hook fails on `az containerapp registry set` with `InternalServerError`
 
 **Cause:** Azure sometimes returns this error even though it saved the registry setting, usually right after it creates the app's managed identity. The hook stops before it configures the second app.
@@ -1088,6 +1094,7 @@ This journey was validated end to end several times. Each rule below exists beca
 - **The post-provision hook failed on a setting Azure had saved.** `az containerapp registry set` returned `InternalServerError` right after the app's identity was created. Hence: the hook confirms the setting and retries once.
 - **The agent wrote run instructions into this README**, even when asked to "tell me". Hence: `PLAN.md` says not to edit it.
 - **The review caught a verifier that didn't match the plan.** The plan requires a comparison question, which catches answers that run out of tokens, but the verifier asked a simple lookup. Hence: fix the verifier in the source, never in a learner's run.
+- **Windows found two more.** `az acr build` crashed printing a ✓ from the build log, and the API couldn't start because nothing created its SQLite folder in the image. Hence: `--no-logs` in the hook, and a plan rule to create the database directory.
 - **A test failed only after checking out the agent's branch.** `api/dist` still held files compiled from `main`. Hence: delete `api/dist` when a test reports `ERR_MODULE_NOT_FOUND`.
 - **Copilot code review asked for a runtime model fallback, twice.** The plan picks the model at deployment time, so the right response was to decline with a reason. Not every review comment needs a code change.
 
