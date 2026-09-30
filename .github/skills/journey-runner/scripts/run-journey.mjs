@@ -219,7 +219,13 @@ function cleanup() {
       const down = cmd(`azd down ${name}`, 'azd', ['down', '--force', '--purge', '--no-prompt', '--environment', name], { cwd, allowFail: true, timeoutMinutes: 45 });
       const left = cmd(`resources left for ${name}`, 'az', ['resource', 'list', '--tag', `azd-env-name=${name}`, '--query', 'length(@)', '-o', 'tsv'], { cwd, allowFail: true });
       const groups = cmd(`groups left for ${name}`, 'az', ['group', 'list', '--tag', `azd-env-name=${name}`, '--query', 'length(@)', '-o', 'tsv'], { cwd, allowFail: true });
-      const remaining = Number(left.output.trim() || 0) + Number(groups.output.trim() || 0);
+      // A preview creates an empty tagged resource group that `azd down` can miss; delete it by tag.
+      if (Number(groups.output.trim() || 0) > 0 && Number(left.output.trim() || 0) === 0) {
+        const names = cmd(`empty groups for ${name}`, 'az', ['group', 'list', '--tag', `azd-env-name=${name}`, '--query', '[].name', '-o', 'tsv'], { cwd, allowFail: true });
+        for (const group of names.output.trim().split(/\s+/).filter(Boolean)) cmd(`delete empty group ${group}`, 'az', ['group', 'delete', '--name', group, '--yes'], { cwd, allowFail: true, timeoutMinutes: 20 });
+      }
+      const groupsAfter = cmd(`groups left for ${name} (final)`, 'az', ['group', 'list', '--tag', `azd-env-name=${name}`, '--query', 'length(@)', '-o', 'tsv'], { cwd, allowFail: true });
+      const remaining = Number(left.output.trim() || 0) + Number(groupsAfter.output.trim() || 0);
       // What counts is what's left in Azure: azd down also exits nonzero when a run already deleted everything.
       result(`cleanup ${name}`, remaining === 0, `${remaining} tagged resources or groups remain${down.status === 0 ? '' : ` (azd down exited ${down.status})`}`);
     }
@@ -232,12 +238,14 @@ function cloneRepo() {
   const dest = join(runDir, 'repo');
   cmd('clone repository', 'git', ['clone', '--quiet', '--no-local', repoRoot, dest]);
   gitRoot = dest;
+  azdProjects.add(dest);
   return dest;
 }
 function createWorkspace(name) {
   const workspace = join(runDir, 'workspace');
   cmd(`create ${name} workspace`, 'node', [join(repoRoot, '.github', 'scripts', 'create-workspace.mjs'), name, '--workspace', workspace]);
   gitRoot = workspace;
+  azdProjects.add(join(workspace, 'journeys', name));
   return join(workspace, 'journeys', name);
 }
 function commitAll(cwd, message) {
@@ -391,6 +399,7 @@ const recipes = {
     cmd('setup.mjs --local', 'node', [join(repoRoot, 'journeys', 'smart-todo', 'setup', 'setup.mjs'), '--local', '--workspace', workspace]);
     gitRoot = workspace;
     const cwd = join(workspace, 'journeys', 'smart-todo');
+    azdProjects.add(cwd);
     loadPrompts(join(cwd, 'README.md'));
     note('No disposable GitHub repository: skipped 🐙 steps (issues, pull requests, Copilot review, Phase 4), used plain branches, and answered grill-plan with the plan defaults');
     // Without GitHub issues, the plans and a decisions file stand in for them (runner skill).
