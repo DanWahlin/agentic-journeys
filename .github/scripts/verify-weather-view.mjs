@@ -1,4 +1,4 @@
-import { azdValue, fail, main, request } from './_utils.mjs';
+import { azdValue, fail, main, poll, request } from './_utils.mjs';
 
 function requireMatch(text, pattern, description) {
   if (!pattern.test(text)) fail(`Missing ${description}`);
@@ -40,6 +40,8 @@ main(async () => {
   if (!/^https:\/\//i.test(webUrl)) fail(`WEB_URL must use HTTPS: ${webUrl}`);
 
   const root = new URL('/', `${webUrl}/`).href;
+  // A Static Web App can take a minute to answer after its first deployment.
+  await poll(root, { attempts: 18, delayMs: 10000 });
   const { response: documentResponse, text: html } = await fetchText(root, 'WeatherView document');
   requireMatch(html, /WeatherView/i, 'WeatherView branding in index.html');
   requireMatch(html, /<script[^>]+type=["']module["'][^>]+src=["'][^"']*app\.js["']/i, 'module script for app.js');

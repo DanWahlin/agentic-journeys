@@ -172,9 +172,11 @@ function azdUp({ cwd, session = 'main', agent, phase = 'Deploy' }) {
   azdProjects.add(cwd);
   let up = cmd('azd up', 'azd', ['up', '--no-prompt'], { cwd, allowFail: true, timeoutMinutes: 75 });
   if (up.status === 0) return result('azd up', true);
-  if (/unable to find a resource tagged/i.test(up.output)) {
-    note('azd up looked the service up before Azure indexed its tags; ran azd deploy, as the troubleshooting section says');
-    up = cmd('azd deploy (tag race)', 'azd', ['deploy', '--no-prompt'], { cwd, allowFail: true, timeoutMinutes: 30 });
+  // Azure can take a minute or two to index a new resource's tags; retry the publish, as the troubleshooting section says.
+  for (let attempt = 1; attempt <= 3 && /unable to find a resource tagged/i.test(up.output); attempt++) {
+    note(`azd up looked the service up before Azure indexed its tags; waited and ran azd deploy (attempt ${attempt})`);
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 45000);
+    up = cmd(`azd deploy (tag race ${attempt})`, 'azd', ['deploy', '--no-prompt'], { cwd, allowFail: true, timeoutMinutes: 30 });
     if (up.status === 0) return result('azd up (after azd deploy)', true);
   }
   result('azd up (first attempt)', false, 'sending the "When something fails" prompt');
@@ -509,6 +511,7 @@ if (cleanupOnly) {
     }
   };
   walk(runDir);
+  spawnSync(process.execPath, [join(scripts, 'refresh-azure-oidc.mjs'), '--once'], { stdio: 'ignore' });
   log(`Cleanup only: ${azdProjects.size} azd project(s) under ${runDir}`);
   cleanup();
   process.exit(results.some((r) => !r.ok) ? 1 : 0);
@@ -517,6 +520,14 @@ if (cleanupOnly) {
 secretsToRedact = [process.env.AZURE_SUBSCRIPTION_ID, process.env.AZURE_TENANT_ID, process.env.AZURE_CLIENT_ID, subscriptionId()].filter(Boolean);
 log(`Running ${journey} on ${process.platform} ${process.arch}; run directory ${runDir}`);
 cmd('azd uses Azure CLI sign-in', 'azd', ['config', 'set', 'auth.useAzCliAuth', 'true'], { allowFail: true });
+// In GitHub Actions with OIDC, keep the Azure CLI sign-in fresh for the whole run.
+let refresher;
+if (process.env.ACTIONS_ID_TOKEN_REQUEST_URL && process.env.AZURE_CLIENT_ID) {
+  refresher = spawn(process.execPath, [join(scripts, 'refresh-azure-oidc.mjs')], { stdio: ['ignore', 'pipe', 'pipe'] });
+  refresher.stdout.on('data', (d) => appendFileSync(join(logDir, 'azure-oidc-refresh.log'), d));
+  refresher.stderr.on('data', (d) => appendFileSync(join(logDir, 'azure-oidc-refresh.log'), d));
+  log('Refreshing the Azure OIDC sign-in every 4 minutes');
+}
 let failure;
 try {
   await recipes[journey]();
@@ -526,6 +537,7 @@ try {
 } finally {
   if (keep) note('--keep: Azure resources were left running');
   else cleanup();
+  refresher?.kill();
   const verdict = writeReport(failure);
   log(`\n${verdict}\nReport: ${join(runDir, 'run-report.md')}`);
   process.exitCode = failure || results.some((r) => !r.ok && r.name.startsWith('cleanup')) ? 1 : 0;
