@@ -445,7 +445,7 @@ Every error test also asserts the `{ error: { code, message } }` envelope.
 | Script | Command |
 | --- | --- |
 | `build` | `tsc` |
-| `check` | `tsc -p tsconfig.check.json`, then `vitest run`, then `tsc` and a load check that imports every compiled `dist/functions/*.js` file with Node.js and fails if any import throws |
+| `check` | `tsc -p tsconfig.check.json`, then `vitest run`, then `tsc` and a load check: with `DATA_PROVIDER=memory` and `AI_PROVIDER=fake` set (the modules validate them when they load), import every compiled `dist/functions/*.js` file with Node.js and fail if any import throws |
 | `test` | `vitest run` |
 | `start` | `func start` |
 | `azurite` | `azurite --silent --location .azurite` |

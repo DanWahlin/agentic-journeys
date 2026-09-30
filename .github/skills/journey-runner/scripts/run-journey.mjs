@@ -419,7 +419,9 @@ const recipes = {
     result('red tests fail on assertions, not setup', red.status !== 0 && !/Cannot find module|error TS\d/.test(red.output));
     prompt('/autopilot Use the tdd-builder agent for the green phase of issue\n#<api-issue>', { cwd, session: 'p1', fill: local, minutes: 120 });
     let check = cmd('npm run check', 'npm', ['run', 'check'], { cwd: api, allowFail: true });
-    if (check.status !== 0) {
+    // Send the red-fix prompt only when tests failed, not when a later part of the check did.
+    const testsFailed = /Tests\s+\d+ failed|\d+ failed \|/.test(check.output);
+    if (check.status !== 0 && testsFailed) {
       note('green stopped with failing tests; sent the README red-fix prompt');
       prompt('Fix only the red tests you reported as impossible to pass', { cwd, session: 'p1', minutes: 120 });
       check = cmd('npm run check (after red fix)', 'npm', ['run', 'check'], { cwd: api, allowFail: true });
