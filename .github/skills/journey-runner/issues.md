@@ -56,3 +56,17 @@ Grafana, n8n, Superset, WeatherView, and AIMarket reran with Azure MCP through `
 - **AIMarket and Superset gates validated with real runs.** Both went red before any infrastructure existed and green after generation, and deliberately broken rules (an `ai-` prefix, a `resourceId()` misuse, an unquoted Helm setting, a one-node cluster) each failed the gate. Both deployments passed their unmodified verifiers after one "When something fails" repair each.
 - **A gate that reads only literals fails on correct AVM infrastructure.** After the review moved AIMarket to AVM modules, the agent-written gate couldn't resolve values passed into modules. The spec now requires resolving parameters across module boundaries, and the README has a prompt for fixing a wrong gate as a new red commit.
 - **New rules from these runs:** the Superset hook resolved the repository root one folder too high (the gate now runs the hook's `--dry-run`), and AIMarket read the AI Search admin key before the service existed (the gate now checks the ordering), plus `*.db` in every `.dockerignore`.
+
+## 2026-09-30 — Full journey runs on GitHub-hosted Windows runners
+
+`run-journey.mjs` and the `journey-windows` workflow ran every journey on `windows-latest` with Copilot CLI, the Azure Skills plugin, Azure MCP, and a real Azure deployment. Grafana, n8n, WeatherView, Superset, and AIMarket passed their unmodified verifiers and cleaned up completely. Windows found problems macOS and Linux never showed:
+
+- **Public images pulled through local Docker.** `azure.yaml` declared Grafana as a service with `image:`, so azd pulled it with Docker running Windows containers. Public-image deployments now have no azd service (Container Apps, Grafana, and n8n skills).
+- **Hook commands the Windows launcher rejects.** Superset's `az aks command invoke` strings used `"` and `&&`, which the PowerShell launcher refuses for `.cmd` targets. Rule: no quotes, `; ` after `set -e`, and doubled backslashes in the ingress annotation (skill and gate).
+- **`az` crashing on non-ASCII output.** A ✓ in `az acr build` logs and Helm's banner in `az aks command invoke` output crashed `az` with `UnicodeEncodeError` on the Windows console. Hooks pass `--no-logs` to `az acr build` and drop `helm repo update`.
+- **OIDC sign-in expiring mid-run.** `azure/login` reuses one short-lived GitHub token, so long runs failed with `AADSTS700024`. `refresh-azure-oidc.mjs` signs in again every 4 minutes.
+- **The OIDC subject uses immutable IDs.** GitHub issued `repo:<owner>@<id>/<repo>@<id>:environment:journey-windows`; the federated credential needs that exact subject.
+- **Agents' `taskkill /T` could kill the runner.** Copilot now runs detached on Windows, and the runner always writes a report and logs.
+- **Portable-script bug.** SmartTodo's checkpoint gate ran Node through the PowerShell launcher with `PATH` limited to Node's folder (found by the `portable-scripts` workflow).
+
+Journey rules that runs on every OS benefit from, found on Windows: storage account names without hyphens, `NodeNext` modules and a load check for SmartTodo, attached-file base names and `PYTHONPATH` as a container variable for Superset, and a SQLite folder in AIMarket's API image. Each is in the journey's plan or skill, a gate check where a program can check it, troubleshooting, and "Lessons from validation runs".
