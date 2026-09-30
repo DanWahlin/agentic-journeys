@@ -94,6 +94,8 @@ Provide two implementations: an in-memory store and an Azure SQL store. The fact
 
 > **Note:** The `update()` method on `TodoRepository` must also support updating `stepsGenerated` (boolean). The `generateSteps` handler sets it to `true` after inserting AI-generated steps. Include `stepsGenerated` as an optional field in the update input type alongside `title` and `status`.
 
+**ES modules:** If `package.json` sets `"type": "module"`, set `"module": "NodeNext"` and `"moduleResolution": "NodeNext"` in both tsconfig files, and write every relative import with its `.js` extension (`import { getDataStore } from '../data/factory.js'`). Node.js doesn't resolve extensionless imports at runtime, but Vitest does, so without `NodeNext` the tests pass and the Functions host then finds no functions and returns 404 for every route. With `NodeNext`, `tsc` rejects a missing extension at build time.
+
 **Node.js entry point note:** Set `"main": "dist/functions/*.js"` in `package.json`. Since `tsconfig.json` uses `rootDir: "src"` and `outDir: "dist"`, source files under `src/functions/` compile to `dist/functions/`. Writing `"main": "dist/src/functions/*.js"` makes Azure Functions Core Tools find zero functions. Keep `test/` out of the build config and type-check it through `tsconfig.check.json` instead. Don't add `azure-functions-core-tools` to `package.json`. `func` is a host prerequisite, and as a dependency its install script breaks the remote build that `azd deploy` runs.
 
 **Node.js deployment note:** For `azd` remote/Oryx build, do not exclude `src/` or `tsconfig.json` in `.funcignore`; Azure needs both to compile TypeScript. Exclude `node_modules/`, `test/`, `dist/**/*.map`, and `local.settings.json`.
@@ -443,7 +445,7 @@ Every error test also asserts the `{ error: { code, message } }` envelope.
 | Script | Command |
 | --- | --- |
 | `build` | `tsc` |
-| `check` | `tsc -p tsconfig.check.json` followed by `vitest run` |
+| `check` | `tsc -p tsconfig.check.json`, then `vitest run`, then `tsc` and a load check that imports every compiled `dist/functions/*.js` file with Node.js and fails if any import throws |
 | `test` | `vitest run` |
 | `start` | `func start` |
 | `azurite` | `azurite --silent --location .azurite` |
