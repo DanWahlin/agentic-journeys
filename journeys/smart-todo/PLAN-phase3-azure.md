@@ -211,6 +211,7 @@ Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turn
    - A SQL firewall rule named `AllowAzureServices` uses `0.0.0.0` for both addresses, and no firewall rule name contains `windows` in any letter case.
    - Both role definition IDs from [Bicep Requirements](#bicep-requirements) appear.
    - Every literal storage `allowSharedKeyAccess` is `false`.
+   - **Storage account names are 3 to 24 lowercase letters and digits, with no hyphens.** Check every `Microsoft.Storage/storageAccounts` name: evaluate it when it's a literal, and when it's an expression, check each literal piece it concatenates (for example, the `'stsmart-'` in `format('stsmart-{0}', ...)` or `concat(...)`) for a hyphen or uppercase letter. A name such as `stsmart-<token>` fails only at `azd provision --preview` with `AccountNameInvalid`.
    - When raw `Microsoft.CognitiveServices/accounts/deployments` resources appear, they're in a nested deployment separate from the template that creates the account.
 7. **Preview** (skipped with `--offline`): Confirm that `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, and `AZURE_PRINCIPAL_TYPE` are set in the selected `azd` environment, then run `azd provision --preview --no-prompt` and require exit `0`. This asks Azure for a what-if result without creating resources.
 

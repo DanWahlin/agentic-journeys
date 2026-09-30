@@ -280,9 +280,46 @@ function hasSetting(entries, name) {
   return entries.some((entry) => containsLiteral(entry.name, name));
 }
 
+// Storage account names: 3-24 lowercase letters and digits. For an expression, check each
+// quoted literal piece it concatenates, and the variable it names when that's a literal.
+function storageNameProblems(template) {
+  const problems = [];
+  const variables = { ...(template?.variables ?? {}) };
+  for (const { resource } of collectResources(template)) {
+    const nested = resource?.properties?.template;
+    if (nested?.variables) Object.assign(variables, nested.variables);
+  }
+  for (const { resource } of collectResources(template)) {
+    if (resource?.type !== 'Microsoft.Storage/storageAccounts') continue;
+    const name = resource.name;
+    if (typeof name !== 'string') continue;
+    if (!name.startsWith('[')) {
+      if (!/^[a-z0-9]{3,24}$/.test(name)) problems.push(name);
+      continue;
+    }
+    let expression = name;
+    const variableRef = name.match(/^\[variables\('([^']+)'\)\]$/);
+    if (variableRef && typeof variables[variableRef[1]] === 'string') expression = variables[variableRef[1]];
+    // Only literal text is checked: a format() string without its {n} slots, and quoted
+    // arguments to concat(). Names passed to variables()/parameters() aren't literals.
+    const literals = [];
+    const format = expression.match(/format\('([^']*)'/);
+    if (format) literals.push(format[1].replace(/\{\d+\}/g, ''));
+    const concat = expression.match(/concat\((.*)\)/);
+    if (concat) for (const piece of concat[1].split(',')) {
+      const quoted = piece.trim().match(/^'([^']*)'$/);
+      if (quoted) literals.push(quoted[1]);
+    }
+    for (const text of literals) if (/[^a-z0-9]/.test(text)) problems.push(`${name} ('${text}')`);
+  }
+  return problems;
+}
+
 function checkContract(template) {
   const resources = collectResources(template);
   requireCondition(resources.length > 0, 'compiled template has no deployable resources');
+  const badStorageNames = storageNameProblems(template);
+  requireCondition(badStorageNames.length === 0, `storage account names must be 3-24 lowercase letters and digits: ${badStorageNames.join(', ')}`);
   const bodies = resources.map(({ resource }) => resourceBody(resource));
   const strings = bodies.flatMap(scalarStrings);
   const entries = settingEntries(resources);
