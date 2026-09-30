@@ -153,6 +153,8 @@ Read the [`PLAN.md` overview](./PLAN.md) before you start to understand the targ
 | `POST` | `/api/users/register` | Register a new user |
 | `POST` | `/api/chat` | AI shopping assistant |
 
+</details>
+
 ---
 
 ## The Journey
@@ -1100,5 +1102,3 @@ Explore the other journeys:
 - [Azure Cosmos DB](https://learn.microsoft.com/azure/cosmos-db/)
 - [Azure Container Apps](https://learn.microsoft.com/azure/container-apps/)
 - [Azure Developer CLI](https://learn.microsoft.com/azure/developer/azure-developer-cli/)
-
-</details>
