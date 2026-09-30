@@ -9,7 +9,7 @@
 import { appendFileSync, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 
 const USAGE = `Usage: node run-copilot-prompt.mjs --prompt-file <path> [options]
 
@@ -131,7 +131,19 @@ const started = new Date();
 // Prompt mode stops waiting for background shell tasks after 600 s by default, which
 // abandons an agent-run azd up halfway. Wait up to an hour unless the caller set it.
 const env = { COPILOT_TASK_WAIT_TIMEOUT_SECONDS: '3600', ...process.env };
-const child = spawn('copilot', copilotArgs, { cwd, env, shell: false });
+// On Windows, npm installs copilot as a .cmd shim, which can't take a multi-line prompt
+// safely. Run the package's JavaScript entry point with Node.js instead.
+function copilotInvocation() {
+  if (process.platform !== 'win32') return { file: 'copilot', prefix: [] };
+  let loader = process.env.COPILOT_CLI_JS;
+  if (!loader) {
+    const root = spawnSync('npm', ['root', '-g'], { encoding: 'utf8', shell: true }).stdout?.trim();
+    if (root) loader = join(root, '@github', 'copilot', 'npm-loader.js');
+  }
+  return loader && existsSync(loader) ? { file: process.execPath, prefix: [loader] } : { file: 'copilot', prefix: [] };
+}
+const invocation = copilotInvocation();
+const child = spawn(invocation.file, [...invocation.prefix, ...copilotArgs], { cwd, env, shell: false });
 const forward = (stream) => (chunk) => {
   const text = chunk.toString();
   output += text.length > 200000 ? '' : text;
