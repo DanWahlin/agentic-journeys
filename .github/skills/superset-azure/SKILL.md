@@ -25,6 +25,9 @@ The hook owns `SUPERSET_SECRET_KEY` and `SUPERSET_ADMIN_PASSWORD`. On a clean en
 
 This skill provides Superset-specific configuration only. Infrastructure (Bicep, azure.yaml, K8s manifests) should be generated fresh each time by the official `azure-prepare` → `azure-validate` → `azure-deploy` pipeline. Do NOT rely on pre-existing infra code.
 
+
+Before generating infrastructure, check whether `scripts/check-infra-superset.mjs` exists at the repository root. If it does, generate until `node scripts/check-infra-superset.mjs --offline` passes, and never change the script to get past a failure. Its spec is [config/infrastructure-gate.md](config/infrastructure-gate.md).
+
 ## Critical: Subscription Context
 
 **ALWAYS set AZURE_SUBSCRIPTION_ID explicitly before running `azd up`.** Read it with `az account show --query id -o tsv`, then pass the returned value to `azd env set AZURE_SUBSCRIPTION_ID <subscription-id>`. Do not use Bash command substitution when the host OS is unknown.
@@ -91,6 +94,7 @@ azd env get-value SUPERSET_URL
 |------|---------|
 | `config/environment-variables.md` | All Superset environment variables |
 | `config/health-probes.md` | Health probe timing for Superset startup |
+| `config/infrastructure-gate.md` | Spec for `scripts/check-infra-superset.mjs`, the deterministic checks that must pass before `azd up` |
 | `troubleshooting.md` | Common issues and solutions |
 
 ## Superset Overview

@@ -1,0 +1,75 @@
+name: Journey problem
+description: A journey step fails, a prompt produces the wrong result, or the instructions don't match what you see.
+title: "[<journey>] <short description>"
+labels: ["journey-problem"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this. AI-generated code differs from run to run, so first try the journey's **When something fails** prompt in the same Copilot session. If the problem remains, or the journey itself looks wrong, tell us here.
+
+        **Remove passwords, tokens, keys, connection strings, and subscription IDs from everything you paste.**
+  - type: dropdown
+    id: journey
+    attributes:
+      label: Journey
+      options:
+        - WeatherView
+        - AIMarket
+        - SmartTodo
+        - Grafana
+        - n8n
+        - Apache Superset
+    validations:
+      required: true
+  - type: input
+    id: step
+    attributes:
+      label: Phase and step
+      placeholder: "Phase 4, Step 3: Deploy"
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system and shell
+      options:
+        - Windows (PowerShell)
+        - Windows (other shell)
+        - macOS
+        - Linux
+        - GitHub Codespaces or dev container
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Tool versions
+      description: Paste the output of `node --version`, `az version`, `azd version`, and `copilot --version`.
+      render: text
+  - type: textarea
+    id: command
+    attributes:
+      label: The prompt or command you ran
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: What happened (redacted error output)
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: For example, the "When something fails" prompt and what the agent changed. If the agent edited a checked-in verifier in `.github/scripts`, say so.
+  - type: checkboxes
+    id: redacted
+    attributes:
+      label: Before you submit
+      options:
+        - label: I removed secrets, tokens, keys, connection strings, and subscription IDs.
+          required: true

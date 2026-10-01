@@ -3,7 +3,7 @@
 [![Azure](https://img.shields.io/badge/Microsoft-Azure-0078D4?logo=microsoftazure&logoColor=white)](https://azure.microsoft.com)&ensp;
 [![GitHub Copilot](https://img.shields.io/badge/GitHub-Copilot-000?style=flat-square&logo=github)](https://github.com/features/copilot)
 
-🎯 [What You'll Learn](#what-youll-learn) &ensp; ✅ [Prerequisites](#prerequisites) &ensp; 🚀 [Quick Start](#quick-start) &ensp; 📚 [Journeys](#agentic-journeys) &ensp; 🧭 [What Each Journey Teaches](#what-each-journey-teaches)
+🎯 [What You'll Learn](#what-youll-learn) &ensp; ✅ [Prerequisites](#prerequisites) &ensp; 🚀 [Quick Start](#quick-start) &ensp; 📚 [Journeys](#agentic-journeys) &ensp; 🧭 [What Each Journey Teaches](#what-each-journey-teaches) &ensp; 🗺️ [Agentic Fundamentals](./docs/agentic-fundamentals.md)
 
 # GitHub and Azure Agentic Journeys
 
@@ -122,7 +122,7 @@ Leaving AI Search, AKS, or SQL running is what drives most of the monthly cost.
 
 ## Agentic journeys
 
-Each journey is self-contained. You can jump into whichever one fits what you want to learn. If you're new to agentic coding? Start with [WeatherView](./journeys/weather-view/README.md).
+Each journey is self-contained. You can jump into whichever one fits what you want to learn. If you're new to agentic coding, start with [WeatherView](./journeys/weather-view/README.md), and keep [Agentic fundamentals](./docs/agentic-fundamentals.md) open as a map of the techniques you'll practice.
 
 ### Apps you build
 
@@ -159,6 +159,7 @@ An agent deploys an existing open-source app to Azure. You describe what you wan
 | Azure Functions | | | ✅ | | | |
 | Microsoft Foundry / LLMs | | ✅ | ✅ | | | |
 | Azure AI Search | | ✅ | | | | |
+| Infrastructure gate written before the Bicep | | ✅ | ✅ | | | ✅ |
 | Test-first gates + GitHub workflow (issues, PRs, rulesets, cloud agent) | | | ✅ | | | |
 | **Agentic practice you'll add** | Plan mode, `@` mentions, `/diff`, `/rewind` | Hand a feature to the cloud agent while you build another; Copilot code review | Plan interviews, red/green TDD agents, stacked PRs, a cloud-agent factory | Plan and cost first, preview, then deploy; operate the app through its API | Work in parallel while `azd up` runs; an agent-built workflow | Cost review before a big deploy; `/fork` a what-if |
 
@@ -177,7 +178,8 @@ Each agentic journey follows the same structure:
 
 - App-specific issues: check the troubleshooting section in each agentic journey
 - Ask GitHub Copilot
-- Found a bug? [Open an issue](https://github.com/microsoft/agentic-journeys/issues)
+- A journey step fails or doesn't match what you see? [Report a journey problem](https://github.com/microsoft/agentic-journeys/issues/new?template=journey-failure.yml)
+- Found another bug? [Open an issue](https://github.com/microsoft/agentic-journeys/issues)
 - Want to contribute? PRs welcome.
 
 ## License

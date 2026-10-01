@@ -550,7 +550,7 @@ if (unexpectedArguments.length > 0) {
   check('Hook', () => {
     const hookPath = projectPath('infra/hooks/postprovision.js');
     requireCondition(existsSync(hookPath), 'infra/hooks/postprovision.js does not exist');
-    const syntax = run('node', ['--check', hookPath]);
+    const syntax = spawnSync(process.execPath, ['--check', hookPath], { encoding: 'utf8', shell: false, windowsHide: true });
     requireCondition(syntax.status === 0, output(syntax) || 'node --check failed');
     const source = readFileSync(hookPath, 'utf8');
     const forbidden = [
@@ -580,8 +580,14 @@ if (unexpectedArguments.length > 0) {
       ...process.env,
       PATH: path.dirname(process.execPath),
     };
-    const dryRun = run('node', [hookPath, '--dry-run'], {
+    // Run Node.js directly: the Windows launcher needs powershell.exe, which isn't on this PATH.
+    const dryRun = spawnSync(process.execPath, [hookPath, '--dry-run'], {
+      cwd: projectDirectory,
+      encoding: 'utf8',
       env: nodeOnlyEnvironment,
+      shell: false,
+      timeout: 120_000,
+      windowsHide: true,
     });
     requireCondition(
       dryRun.status === 0,
