@@ -1,0 +1,127 @@
+name: Journey on Windows
+
+# Runs one journey end to end on a GitHub-hosted Windows runner with the journey-runner's
+# unattended script: README prompts through Copilot CLI (with the Azure Skills plugin and
+# Azure MCP), the journey's gates and verifier, a real Azure deployment, and cleanup.
+#
+# Needs a GitHub environment named `journey-windows` with variables AZURE_CLIENT_ID,
+# AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID for an Entra app whose federated credential
+# trusts this environment's OIDC subject, and a COPILOT_GITHUB_TOKEN secret. GitHub can
+# issue the subject with immutable IDs (`repo:<owner>@<id>/<repo>@<id>:environment:journey-windows`);
+# if Azure sign-in fails with AADSTS700213, copy the subject it prints into the credential.
+# See .github/skills/journey-runner/SKILL.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      journey:
+        description: Journey to run
+        type: choice
+        options: [grafana, n8n, superset, weather-view, aimarket, smart-todo]
+        default: grafana
+      location:
+        description: Azure region
+        type: string
+        default: westus
+  push:
+    # Pushing run/windows/<journey> runs that journey, so forks can test before merging.
+    branches: ["run/windows/*"]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: journey-windows-${{ inputs.journey || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  journey:
+    runs-on: windows-latest
+    environment: journey-windows
+    timeout-minutes: 330
+    env:
+      COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: lts/*
+
+      - name: Choose the journey
+        id: pick
+        shell: bash
+        run: |
+          journey="${{ inputs.journey }}"
+          if [ -z "$journey" ]; then journey="${GITHUB_REF_NAME##*/}"; fi
+          case "$journey" in grafana|n8n|superset|weather-view|aimarket|smart-todo) ;; *) echo "Unknown journey: $journey"; exit 1;; esac
+          echo "journey=$journey" >> "$GITHUB_OUTPUT"
+          echo "location=${{ inputs.location || 'westus' }}" >> "$GITHUB_OUTPUT"
+          echo "RUN_DIR=${RUNNER_TEMP}\\journey-run" >> "$GITHUB_ENV"
+
+      - name: Sign in to Azure with OIDC (no stored secret)
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: Azure/setup-azd@0b7e3a35ab00f2eee7080c845eb39c3f0ebfa553 # v2.4.0
+
+      - name: Install Copilot CLI, the Azure Skills plugin, and Bicep
+        shell: pwsh
+        run: |
+          npm install --global @github/copilot
+          copilot --version
+          copilot plugin marketplace add microsoft/azure-skills
+          copilot plugin install azure@azure-skills
+          az bicep install
+          git config --global user.name "journey-runner"
+          git config --global user.email "journey-runner@users.noreply.github.com"
+          azd config set auth.useAzCliAuth true
+
+      - name: Install SmartTodo tools (Functions Core Tools, sqlcmd)
+        if: steps.pick.outputs.journey == 'smart-todo'
+        shell: pwsh
+        run: |
+          npm install --global azure-functions-core-tools@4 --allow-scripts=azure-functions-core-tools
+          func --version
+          # The Go-based sqlcmd from its official release, on PATH for later steps.
+          $dir = Join-Path $env:RUNNER_TEMP "sqlcmd"
+          gh release download --repo microsoft/go-sqlcmd --pattern "sqlcmd-windows-amd64.zip" --dir $dir
+          Expand-Archive -Path (Join-Path $dir "sqlcmd-windows-amd64.zip") -DestinationPath $dir -Force
+          & (Join-Path $dir "sqlcmd.exe") --version
+          Add-Content -Path $env:GITHUB_PATH -Value $dir
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Run the journey
+        shell: pwsh
+        run: node .github/skills/journey-runner/scripts/run-journey.mjs ${{ steps.pick.outputs.journey }} --run-dir "$env:RUN_DIR" --location ${{ steps.pick.outputs.location }}
+
+      - name: Clean up Azure resources if the run was interrupted
+        if: always()
+        shell: pwsh
+        run: node .github/skills/journey-runner/scripts/run-journey.mjs --cleanup-only --run-dir "$env:RUN_DIR"
+
+      - name: Upload the report and redacted logs
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: journey-${{ steps.pick.outputs.journey }}-windows
+          path: |
+            ${{ env.RUN_DIR }}/run-report.md
+            ${{ env.RUN_DIR }}/progress.log
+            ${{ env.RUN_DIR }}/logs/
+            ${{ env.RUN_DIR }}/prompts-used/
+            ${{ env.RUN_DIR }}/timing.jsonl
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Show the report
+        if: always()
+        shell: pwsh
+        run: if (Test-Path "$env:RUN_DIR\run-report.md") { Get-Content "$env:RUN_DIR\run-report.md" | Add-Content $env:GITHUB_STEP_SUMMARY }

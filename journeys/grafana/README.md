@@ -303,6 +303,12 @@ GF_DATABASE_SSL_MODE: require
 
 ## Troubleshooting
 
+### `azd up` fails with `no matching manifest for windows`
+
+**Cause:** `azure.yaml` declares Grafana as a service with `image:`, so azd pulls the image through your local Docker, which is running Windows containers.
+
+**Fix:** Grafana's image is already set in the Bicep, so azd has nothing to package. Ask the agent to remove the `services:` block from `azure.yaml`, then rerun `azd up`. You don't need Docker for this journey.
+
 ### Container Won't Start
 
 Ask the agent to diagnose:
@@ -388,6 +394,7 @@ This journey was validated end to end several times. Recent runs passed on the f
 - **The first request after idle returned 502.** With `minReplicas: 0`, Grafana scales to zero, and the first request waits 30 to 60 seconds for a cold start. Hence: wait and retry before you debug, and point probes and the verifier at `/api/health`, which also reports database status.
 - **Dashboards disappeared after a restart.** SQLite lives in the container's local storage. That's by design in this journey, and the [Assignment](#assignment) lets you see it happen. Hence: use PostgreSQL or an Azure Files mount for anything you want to keep.
 - **More replicas would have split the data.** Each replica would get its own SQLite database, so users and dashboards would differ from request to request. Hence: `maxReplicas: 1` while Grafana uses SQLite.
+- **`azd up` failed on Windows with `no matching manifest for windows`.** The generated `azure.yaml` declared Grafana as a service with `image:`, so azd pulled the image through local Docker, which was running Windows containers. The image is already set in Bicep, so the fix removed the `services:` block. Hence: public-image deployments have no azd service, and need no Docker.
 - **Generated passwords got weakened to survive shell quoting.** Hence: pass secrets through argument arrays or environment variables, never through an interpolated shell command.
 
 </details>

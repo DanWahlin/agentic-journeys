@@ -50,6 +50,10 @@ services:
 
 Declare each service whose image azd owns this way. AIMarket declares only `api`; Bicep creates its web Container App and the project postdeploy hook owns the storefront ACR build and update. **Without `language`:** `azd up` fails with "must specify language or image". **Without `remoteBuild: true`:** `azd` can require a local Docker daemon.
 
+### Public images: no azd service
+
+When a Container App runs a public image that you don't build (Grafana, n8n), set the image in Bicep and leave `services:` out of `azure.yaml`, so `azure.yaml` has only `infra` and `hooks`. `azd provision` (or `azd up`) then creates everything. A service with `image: grafana/grafana` makes azd pull the image through a local Docker daemon during packaging, so the deployment requires Docker, and on Windows, where Docker often runs Windows containers, it fails with `no matching manifest for windows`.
+
 ### Cross-platform hooks
 
 This repository requires `azd` 1.28.0 or later and Node.js LTS or later. Use JavaScript or TypeScript hooks referenced directly from `azure.yaml`; `azd` detects the language from the extension. Do not generate Bash-only `.sh` or PowerShell-only `.ps1` lifecycle hooks.
@@ -181,3 +185,7 @@ Wrong naming → `azd env get-value` returns "key not found".
 ## Transient `az containerapp registry set` errors
 
 Right after a Container App's system identity is created, `az containerapp registry set --identity system` can return `InternalServerError` even though the registry entry was saved. In post-provision hooks, retry once, then confirm with `az containerapp registry list` before failing, so the hook doesn't stop before configuring the next app.
+
+## `az acr build` on Windows: use `--no-logs`
+
+`az acr build` streams the remote build log through the local console. On Windows, where the console often uses a legacy code page, a character such as ✓ in the log makes `az` crash with `UnicodeEncodeError: 'charmap' codec can't encode character`, even though the build itself succeeds in Azure. Setting `PYTHONIOENCODING` doesn't help, because the Azure CLI bundles its own Python. In hooks, pass `--no-logs`: the command still waits for the build and returns its exit code, and it prints nothing that can crash. The same crash can hit `az aks command invoke` when the remote command prints non-ASCII text, such as Helm's banner.

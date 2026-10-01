@@ -191,7 +191,7 @@ The iOS app is NOT deployed via azd. To test it against Azure, set `Config.apiBa
 
 Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turns the prose in [Azure Deployment](#azure-deployment) into checks with a deterministic exit code. Running it before `infra/` exists must fail. That is the red phase for infrastructure.
 
-**Portability:** Resolve every path relative to the project directory (the parent of the script's `scripts/` folder), not the current working directory, so CI can run it from the repository root. Use only the Node.js standard library, so the scaffold script can copy the gate into another project. Invoke CLIs with argument arrays and `shell: false`. On Windows, use the PowerShell JSON-payload launcher pattern from `.github/scripts/_utils.mjs`, copied into the script rather than imported. Use the launcher only for CLI shims such as `az` and `azd`; run Node.js itself with `process.execPath`, because the hook dry-run check below restricts `PATH` to the Node.js directory, where `powershell.exe` isn't found.
+**Portability:** Resolve every path relative to the project directory (the parent of the script's `scripts/` folder), not the current working directory, so CI can run it from the repository root. Use only the Node.js standard library, so the scaffold script can copy the gate into another project. Invoke CLIs with argument arrays and `shell: false`. On Windows, use the PowerShell JSON-payload launcher pattern from `.github/scripts/_utils.mjs`, copied into the script rather than imported. That launcher rejects `"`, `&`, `|`, `<`, `>`, `^`, `%`, `!`, and parentheses in arguments to `.cmd` programs such as `az`, so don't pass JMESPath expressions with functions (`starts_with(...)`) or quoted jsonpath; request JSON and filter it in JavaScript instead. Use the launcher only for CLI shims such as `az` and `azd`; run Node.js itself with `process.execPath`, because the hook dry-run check below restricts `PATH` to the Node.js directory, where `powershell.exe` isn't found.
 
 **Checks.** Print one `PASS` or `FAIL` line per check with a short reason, then exit `1` if any check failed:
 
@@ -211,10 +211,11 @@ Generate `scripts/check-infra.mjs` **before** the infrastructure exists. It turn
    - A SQL firewall rule named `AllowAzureServices` uses `0.0.0.0` for both addresses, and no firewall rule name contains `windows` in any letter case.
    - Both role definition IDs from [Bicep Requirements](#bicep-requirements) appear.
    - Every literal storage `allowSharedKeyAccess` is `false`.
+   - **Storage account names are 3 to 24 lowercase letters and digits, with no hyphens.** Check every `Microsoft.Storage/storageAccounts` name: evaluate it when it's a literal, and when it's an expression, check each literal piece it concatenates (for example, the `'stsmart-'` in `format('stsmart-{0}', ...)` or `concat(...)`) for a hyphen or uppercase letter. A name such as `stsmart-<token>` fails only at `azd provision --preview` with `AccountNameInvalid`.
    - When raw `Microsoft.CognitiveServices/accounts/deployments` resources appear, they're in a nested deployment separate from the template that creates the account.
 7. **Preview** (skipped with `--offline`): Confirm that `AZURE_SUBSCRIPTION_ID`, `AZURE_PRINCIPAL_ID`, `AZURE_PRINCIPAL_LOGIN`, and `AZURE_PRINCIPAL_TYPE` are set in the selected `azd` environment, then run `azd provision --preview --no-prompt` and require exit `0`. This asks Azure for a what-if result without creating resources.
 
-The script never prints secrets or app setting values. The `infra` CI job runs it with `--offline` because CI has no Azure credentials.
+The script never prints secrets or app setting values. When a CLI check fails, print the last 20 lines of its output (with secrets removed) under the `FAIL` line, so the reason is visible without rerunning it. The `infra` CI job runs it with `--offline` because CI has no Azure credentials.
 
 **Gate:** `node scripts/check-infra.mjs --offline` must pass before a pull request merges, and `node scripts/check-infra.mjs` must pass before `azd up`.
 

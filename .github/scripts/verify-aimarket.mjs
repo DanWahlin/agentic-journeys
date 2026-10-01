@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { asArray, azdValue, jsonRequest, main, request } from './_utils.mjs';
+import { asArray, azdValue, jsonRequest, main, request, sleep } from './_utils.mjs';
 
 function absolute(base, path) {
   return new URL(path, `${base}/`).toString();
@@ -33,16 +33,20 @@ main(async () => {
   if (!chatPayload.content.toLowerCase().includes('ultrabook pro 15')) {
     throw new Error('Chat response did not mention the catalog product UltraBook Pro 15');
   }
-  const page = await request(web, { timeoutMs: 60000 });
-  const html = await page.text();
-  if (page.status !== 200) throw new Error(`Storefront returned HTTP ${page.status}`);
-  const sources = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((match) => match[1]);
-  if (sources.length === 0) throw new Error('No JavaScript assets found in storefront HTML');
+  // A new web revision can take a minute to replace the placeholder; retry before failing.
   const apiHost = new URL(api).host;
   let integrated = false;
-  for (const source of sources.slice(0, 10)) {
-    const asset = await request(absolute(web, source), { timeoutMs: 60000 });
-    if (asset.ok && (await asset.text()).includes(apiHost)) { integrated = true; break; }
+  for (let attempt = 1; attempt <= 6 && !integrated; attempt += 1) {
+    if (attempt > 1) await sleep(20000);
+    const page = await request(web, { timeoutMs: 60000 });
+    const html = await page.text();
+    if (page.status !== 200) throw new Error(`Storefront returned HTTP ${page.status}`);
+    const sources = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map((match) => match[1]);
+    if (sources.length === 0) throw new Error('No JavaScript assets found in storefront HTML');
+    for (const source of sources.slice(0, 10)) {
+      const asset = await request(absolute(web, source), { timeoutMs: 60000 });
+      if (asset.ok && (await asset.text()).includes(apiHost)) { integrated = true; break; }
+    }
   }
   if (!integrated) throw new Error(`Storefront assets don't reference production API host ${apiHost}`);
   console.log('PASS: health, 10 products, images, search, chat, storefront, and API integration');

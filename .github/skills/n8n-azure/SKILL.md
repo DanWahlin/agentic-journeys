@@ -11,6 +11,9 @@ Application-specific configuration for deploying n8n to Azure Container Apps wit
 
 Require Azure CLI, Azure Developer CLI 1.28.0 or later, and Node.js LTS or later. Generated lifecycle hooks must be CommonJS JavaScript (`.js`) or TypeScript (`.ts`) files referenced directly from `azure.yaml`; azd 1.28.0 rejects `.mjs` hook paths. Do not generate Bash-only `.sh` or PowerShell-only `.ps1` hooks. See `../../../docs/tool-installation.md` for Windows, Mac, and Linux installation options.
 
+
+**`azure.yaml` has no `services:` block.** The Container App's public image is set in Bicep, so azd has nothing to package. A service with `image:` makes azd pull the image through local Docker, which fails on Windows hosts running Windows containers and makes Docker a requirement. See the [container-apps-deployment skill](../container-apps-deployment/SKILL.md#public-images-no-azd-service).
+
 ## Critical: Subscription Context
 
 **ALWAYS set AZURE_SUBSCRIPTION_ID explicitly before running `azd up`.** Read it with `az account show --query id -o tsv`, then pass the returned value to `azd env set AZURE_SUBSCRIPTION_ID <subscription-id>`. Do not emit Bash command substitution when the operating system is unknown.

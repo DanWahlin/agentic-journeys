@@ -602,7 +602,7 @@ This journey is free under normal lab usage, but cleanup still matters: it prove
 
 **Fix:** Rerun the Phase 3 read-only review. The `web` key in `azure.yaml` and `azd-service-name` tag must match exactly.
 
-If the tag is already there (`az staticwebapp list --resource-group <resource-group> --query "[].tags"`), azd looked the app up seconds after creating it, before Azure indexed its tags. Run `azd deploy` to publish again.
+If the tag is already there (`az staticwebapp list --resource-group <resource-group> --query "[].tags"`), azd looked the app up seconds after creating it, before Azure indexed its tags. Wait a minute, then run `azd deploy` to publish again. If it reports the same error, wait another minute and retry.
 
 ### `azd up` says the service source and output folder cannot both be the root
 
@@ -740,7 +740,8 @@ This journey was validated end to end several times. Each rule below exists beca
 - **The pre-deployment review couldn't run its preview.** It ran before the `azd` environment existed. Hence: the agent prepares the environment first, then reviews.
 - **The deployed app logged a Content Security Policy error.** An inline theme script ran fine locally, where the server sends no policy header. Hence: no inline scripts, and the deployed browser check fails on console errors.
 - **`/rewind` left the files changed.** The default choice, **Conversation only**, keeps your files. Hence: the exercise says to pick **Conversation + files**. The throwaway prompt also says it's an experiment, because otherwise a careful agent stops and asks before breaking the five-card rule in `PLAN.md`.
-- **`azd up` couldn't find the app it had just created.** It looked the Static Web App up by tag seconds after creating it. Hence: the troubleshooting entry, whose fix is `azd deploy`.
+- **`azd up` couldn't find the app it had just created.** It looked the Static Web App up by tag seconds after creating it, and on a Windows runner an immediate `azd deploy` hit the same error. Hence: the troubleshooting entry, whose fix is to wait a minute, then run `azd deploy`.
+- **The verifier failed with `fetch failed` right after a successful deployment.** A brand-new Static Web App can take a minute to answer. Hence: the verifier now waits up to three minutes for the site before it checks anything.
 
 </details>
 
